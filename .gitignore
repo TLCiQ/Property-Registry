@@ -21,6 +21,7 @@ npm-debug.log*
 
 # Local scratch
 .cursor/
+.cache/
 
 # Optional local spreadsheets (not part of source)
 *.xlsx

@@ -1,6 +1,43 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** April 10, 2026
+**Last updated:** May 7, 2026
+
+## Session: May 7, 2026 — Canonical taxonomy v1.1 — `property_buildings.form_factor` materialized
+
+**Migration applied (Registry-iQ Supabase `xhafhdaugmgdxckhdfov`):** `Property_Registry/migrations/001_add_form_factor.sql`
+
+**Canonical source of truth:** `/Cortex-iQ/canonical/CANONICAL_Hierarchies_v1_2026-05-07.md` (v1.1, §3 — Property Form Factor). Cortex embeddings live in `ddojpqanmxxfhpjnuqip.knowledge_embeddings` where `source_type='canonical_taxonomy'` AND `metadata->>'version'='1.1'`.
+
+**What changed:**
+- New nullable column `property_buildings.form_factor TEXT CHECK (form_factor IN ('High-Rise','Mid-Rise','Wrap','Garden-Style'))`.
+- Backfilled from `total_floors` heuristic: 1-3 → `Garden-Style`, 4-5 → `Wrap`, 6-14 → `Mid-Rise`, 15+ → `High-Rise`. NULL where `total_floors` is unknown (manual classification needed).
+- Index `idx_property_buildings_form_factor` on non-null values.
+- Column comment cites canonical v1.1 §3.
+
+**Why it matters here:** `form_factor` is the canonical 4-value enum used platform-wide (RITA classification, Process-iQ rate-card stratification by form, Vantage-iQ portfolio segmentation). Buildings whose floor count is unknown stay NULL — do NOT default-assign them.
+
+**Linked migrations elsewhere (same canonical commit):** Chain-iQ `piq_ops_taxonomy` + `piq_uom`, Workforce-iQ migration 009 (canonical taxonomy materialization). See `/Workforce-iQ/MASTER_RECOMMENDATIONS.md` for the full v1.1 commit log.
+
+---
+
+## Session: April 13, 2026 — n8n → Chain-iQ automations audit
+
+- **Instance:** `https://lcrdigital.app.n8n.cloud` (API healthy).
+- **Primary scheduled ingest:** workflow **`Chain-iQ — Daily Box Ingestion`** (`gqlpPJ5fs7pOk091`) — **ACTIVE**; cron `0 12 * * 1-5` (timezone America/Chicago) → `POST https://chain-iq-ingestion-production.up.railway.app/ingest/from-box` → poll `/ingest/status/{job_id}`.
+- **Issue found (fixed in n8n):** **Store Job ID**, **Log Success**, and **Log Failure** used legacy Set node `fields.values` / `stringValue`, which in Set v3.4 did not populate fields — **`job_id` was always empty**, so **Job ID Valid?** always failed and the run exited in ~0.6s without waits/polls (Railway job was still started in the first HTTP call). Migrated those three nodes to **`assignments`** (`type: string`).
+- **Related (not Chain-iQ primary path):** `Chain-iQ — Auto Ingest from Box` (`li2Ed2VpFc5U261s`) and `TLCiQ — Daily Box Fetcher` (`yTsN8wpnksP8svGx`) are **inactive**. `TLCiQ Pipeline - Daily Scheduler` triggers **GitHub Actions** + Supabase log (pipeline, not Box ingest). Active **FreightPop**-named workflows may be legacy/alternate paths — confirm in n8n if still needed beside Railway Box ingest.
+
+## Session: April 13, 2026 — EDISON vessel: Airtable + Chain-iQ link
+
+- **Chain-iQ Supabase** (`vessel_registry`, id `6d434e5f-f52c-4209-a5d9-5fec37b832af`): MMSI **`235082896`** (already set); **`airtable_record_id`** was null — **VESSEL PROFILES** had no EDISON row (search by name returned empty).
+- **Airtable** base `appErM42NIacUz8W6`, table **VESSEL PROFILES**: created record **`recfFzr9RFdd1FlXG`** — CMA, EDISON, MMSI# `235082896` (computed **`VESSEL_ID`** = `CMA_EDISON`).
+- **Supabase update:** `airtable_record_id` = `recfFzr9RFdd1FlXG` so Chain-iQ vessel PATCH can dual-write MMSI/IMO to Airtable when those fields change.
+
+## Session: April 12, 2026 — Warehouse registry + Field Ops / Site Management registry
+
+- **`scripts/migration-warehouse-and-field-ops-registry.sql`** — Registry-iQ: `warehouse_registry` (site, scale_notes, contacts, dedupe_key), `warehouse_project_service` (warehouse ↔ project history, `last_seen_at`), `field_ops_registry` (people, `enrichment_status`, `role_category`), `field_ops_assignment` (person ↔ property + project + `assignment_role`), `project_registry.warehouse_registry_id`. Requires `pg_trgm` (script runs `CREATE EXTENSION IF NOT EXISTS`).
+- **`scripts/sync-install-schedules-to-registry.mjs`** — After install-schedule row processing, upserts warehouses + links projects; find-or-create field ops from installer / site / sales / labor / warehouse contact; warehouse contact uses `warehouse_contact_email` when present. Prerequisite: warehouse migration applied. **`splitContactBlob()`** splits multi-person / multi-line schedule text into separate `property_stakeholders` + `field_ops` rows (newlines, `;`, `/`, noise-line filter).
+- **`docs/WAREHOUSE_AND_FIELD_OPS_REGISTRY.md`** — schema + enrichment roadmap; **`docs/INSTALL_SCHEDULES_REGISTRY_LINK.md`** — cross-links.
 
 ## Session: April 11, 2026 — Sync retries + SKU count verification
 
@@ -839,6 +876,16 @@ Standalone stakeholder (company) management with RITA-powered enrichment and con
 
 ## Contact Registry (March 10, 2026)
 
+### Data remediation (May 2026)
+Scripts in `Property_Registry/scripts/`:
+| Script | Purpose |
+|---|---|
+| `remediate-contact-registry.mjs` | Normalize phones/names; re-harvest iQ PR contacts; runs domain + property linkers |
+| `link-contacts-by-domain.mjs` | Email domain → stakeholder match/create; Firecrawl/homepage company names; cache in `.cache/domain-company-cache.json` |
+| `link-contacts-by-property.mjs` | `external_ids.property_hints` → property_stakeholders → company link |
+
+dale-chat: `/contact-registry/[id]` detail UI; `scripts/batch-contact-rita-enrich.mjs` for capped LinkedIn/photo backfill.
+
 ### What was built
 Standalone contact (person) management with RITA deep profiling — LinkedIn scraping, work history capture, behavioral/psychological profiling.
 
@@ -1021,3 +1068,24 @@ UI-level navigation between modules using Rosetta entity resolution:
 **File:** `iQ_Property_Registry_Cursor_Prompt_3.pdf` (deleted March 2026)
 **Original location:** `/Users/geoffreyjackson/Dropbox/The Living Company/TLC iQ/Property_Registry/`
 **Reason for deprecation:** Core architectural assumptions (Chain-iQ as database, no project model, no Rosetta) were superseded by the live implementation. All valuable future-work items preserved above.
+
+---
+
+## Schema currency note (2026-05-09)
+
+Earlier sections of this doc reference pre-migration-006 column names (`divided_bedrooms`, `total_bedrooms_effective`, `bed_count_per_unit`, `total_beds_this_type`). Those names are historical — they were renamed/replaced by migration 006 (April 2026, applied via `/Users/geoffreyjackson/MyApps/TURBO/migrations/006_property_unit_types_bedroom_taxonomy.sql`). The current `property_unit_types` schema is:
+
+| Old name | New name | Notes |
+|---|---|---|
+| `divided_bedrooms` | `divider_bedrooms` | clearer (the divider is the barn door / vestibule) |
+| `bed_count_per_unit` | `beds_per_unit` | shorter; sets up the floor → building → property bed-count hierarchy |
+| `total_bedrooms_effective` | `bedrooms_structural` | now `GENERATED ALWAYS AS (...) STORED` — never write directly |
+| `total_beds_this_type` | `total_beds_for_unit_type` | now `GENERATED ALWAYS AS (unit_count * beds_per_unit) STORED` |
+
+New atomic categories: `shared_bedrooms`, `pod_bedrooms`, `murphy_bedrooms`, `super_murphy_living_rooms` (the last is a flex sleep zone, NOT a bedroom and NOT counted in `bedrooms_structural`).
+
+New attributes: `unit_features text[]` (flexible tags) and `upgrade_tier` (`standard | compact | premium | vip`).
+
+New bed-count roll-up columns on parent tables: `property_floors.total_beds_on_floor`, `property_buildings.total_beds_in_building`. These complement the existing `property_registry.total_beds`.
+
+**Scripts in `scripts/`** updated 2026-05-09 to use the post-006 column set: `sync-production-to-registry.mjs`, `seed-from-install-iq.mjs`, `migrate-to-registry-iq.mjs` (the embedded `CREATE TABLE` for `property_unit_types` now reflects the post-006 schema; later additions like RITA enrichment tables and `fn_apply_rita_proposal` live in their own migration files in `/Users/geoffreyjackson/MyApps/TURBO/migrations/`).
