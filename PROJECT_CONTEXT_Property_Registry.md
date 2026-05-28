@@ -35,6 +35,44 @@
 
 ---
 
+## Session: May 28, 2026 — Dedupe scan ran; auto-merge rule tightened
+
+**Applied:** `scripts/dedupe-scan-existing-registries.sql` (Registry-iQ Supabase migration `dedupe_scan_existing_registries`).
+
+Two helper functions added: `iqid_external_ids_overlap(a, b)` (boolean — do two `external_ids` jsonbs share any non-empty key/value?) and `iqid_external_ids_shared(a, b)` (jsonb — the actual shared key/value pairs). Used by the scan to flag corroborating signals.
+
+**Queue populated — 2,934 pairs total:**
+
+| Entity | Total | Exact (1.000) | 0.90–0.97 | 0.85–0.89 | 0.75–0.84 |
+|---|---:|---:|---:|---:|---:|
+| project | 2,398 | 855 | 39 | 108 | 1,396 |
+| property | 308 | 93 | 19 | 38 | 158 |
+| contact | 190 | 157 | 3 | 6 | 24 |
+| stakeholder | 36 | 1 | 3 | 7 | 25 |
+| vendor | 1 | — | — | — | 1 |
+| facility | 1 | — | — | — | 1 |
+
+**Critical finding — name-similarity alone is NOT enough for auto-merge.** Score=1.000 pairs include genuine brand collisions where multiple distinct properties share the brand name (e.g. `Holiday Inn Express` × `Holiday Inn Express` — different hotels; `Hub on Campus` ×3 — same brand, different cities). Auto-merging on name alone would collapse brand chains.
+
+**Tightened auto-merge rule (replaces "≥0.98 auto-merge"):**
+
+```text
+auto_merge IF
+  match_score >= 0.98
+  AND (
+    (city_match AND state_match)
+    OR external_ids_overlap
+    OR (entity_type='contact'     AND email_match)
+    OR (entity_type='stakeholder' AND website_match)
+  )
+```
+
+Everything else (including score=1.000 brand-only matches) goes to HITL. The compound rule on the property queue surfaces ~30 obviously-true duplicate pairs as auto-merge candidates (e.g. `CAMPUS EDGE - RALEIGH` × `CAMPUS EDGE-RALEIGH` in Raleigh NC; `OLIV- SEATTLE` × `oLiv Seattle` with shared external_id).
+
+**Next:** HITL review UI in dale-chat at `/registry-review` (polymorphic over entity_type). Then AI pre-pass.
+
+---
+
 ## Session: May 7, 2026 — Canonical taxonomy v1.1 — `property_buildings.form_factor` materialized
 
 **Migration applied (Registry-iQ Supabase `xhafhdaugmgdxckhdfov`):** `Property_Registry/migrations/001_add_form_factor.sql`
