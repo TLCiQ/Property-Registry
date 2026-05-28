@@ -2,6 +2,21 @@
 
 **Last updated:** May 28, 2026
 
+## Session: May 28, 2026 — Production deploy unblock
+
+User reported "still not seeing anything" after the AI pre-pass + rename-button work was pushed. Investigation: **both prior production deploys on `tlciq-platform` (`af34306`, `7c35782`) were in ERROR state** — production was stuck on the last successful build, so none of the recent work was actually live.
+
+Two type errors caught by Vercel `tsc` that local dev never surfaced (the monorepo's TS install is broken at the workspace level, so `npm run dev` skipped these):
+
+1. `dale-chat/app/components/RegistryLogoBox.tsx:242` — leftover hack `{publicIdFromCloudinaryUrl && null}` from an earlier unused-import suppression. Fixed by removing the import (`7a50744`).
+2. `dale-chat/app/registry-review/page.tsx:450` — `isResolvedTerminal(status: ReviewStatus)` referenced a type that was never imported from `@/lib/registry-review`. Fixed (`9efb210`).
+
+`9efb210` deployed `READY` to production. The AI pre-pass, sweep, apply worker, rename feature, stakeholder/project image galleries, and everything else since `59634f9` are all live on `tlciq-platform.vercel.app` for the first time.
+
+**Lesson:** local `npm run dev` does not run `tsc --noEmit` and the workspace TS toolchain isn't reachable via `npx`. Need to either fix the local TS install or add a pre-push hook running the same lint+typecheck step Vercel runs. Otherwise build breaks ship silently to ERROR'd prod.
+
+---
+
 ## Session: May 28, 2026 — Apply worker + Review UI Apply panel (closes the HITL loop)
 
 **The full HITL dedupe pipeline is now end-to-end functional:** scan → review queue → decision → preview → apply → audit.
