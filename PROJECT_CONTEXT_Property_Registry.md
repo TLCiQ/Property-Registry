@@ -73,6 +73,69 @@ Everything else (including score=1.000 brand-only matches) goes to HITL. The com
 
 ---
 
+## Session: May 28, 2026 — Standard registry image gallery + 8-category model
+
+**User decisions (chat thread):**
+- 8 image categories (framing A — keep `floorplan` + `unit_layout` split):
+  `logo` (single, top-left brand box) · `hero` (single, banner) · `exterior` · `common_amenity` · `units` · `floorplan` · `site_plan` · `unit_layout`
+- Standard image gallery component keyed by entity type — applies to property, project, vendor, stakeholder, facility (contact opts out; `photo_url` is a person headshot, distinct concept).
+- All real binaries live in Cloudinary; Supabase stores metadata + `public_id` pointers. Use the Cloudinary MCP for any binary/tag drift cleanup.
+
+**Migrations applied to Registry-iQ Supabase (`xhafhdaugmgdxckhdfov`):**
+
+1. `scripts/migration-property-image-categories.sql` — normalize legacy URL-string entries into full image objects + default `role=exterior` for `gallery`/`null`. Hero entries preserved.
+2. `scripts/migration-property-image-publicid-backfill.sql` — extract `public_id` + `format` from Cloudinary URL pattern (`image/upload/.../v{N}/{public_id}.{format}`) for entries with `public_id=''`. Deterministic, no Cloudinary API call needed. Backfilled the 33 Raleigh entries.
+3. `scripts/migration-property-image-floorplan-recategorize.sql` — URL pattern `/floorplans/` or `_fp_` → `role=unit_layout` (per-unit-type drawings, per chat decision).
+4. `scripts/migration-registry-image-columns.sql` — add standard image columns (`images jsonb`, `logo_image_url text`, `hero_image_url text`) to `project_registry`, `vendor_registry`, `stakeholder_registry`, `facility_registry` where missing. Stakeholder legacy `logo_url` migrated to `logo_image_url` + synthesized `images[role=logo]` entry; `logo_url` kept (deprecated). `contact_registry` intentionally untouched.
+
+**Verification after all four:**
+- property images: 267 `exterior`, 33 `unit_layout` (was 33 floorplan URLs), 4 `hero`. All objects now have non-empty `public_id` + `format`.
+- 9 of 993 stakeholders had `logo_url`; all 9 now have `logo_image_url` populated AND a corresponding `images[role=logo]` entry.
+
+**dale-chat code shipped (commit `4ff4531`):**
+
+- `lib/registry-images.ts` — canonical types, `IMAGE_CATEGORIES` spec, `VALID_CATEGORIES_BY_ENTITY` map, single-occupancy spec, Cloudinary URL helpers (`cloudinaryFillUrl`, `cloudinaryLogoUrl`, `publicIdFromCloudinaryUrl`).
+- `/api/registry-images/sign-upload` — generic Cloudinary signed-upload route accepting `entityType + entityId + category`; stable `public_id` for logo/hero (`<entityType>_<entityId>_logo|hero`) so re-uploads replace cleanly. Tags every Cloudinary asset with `entity:<type>`, `category:<value>` for future MCP-driven cleanup.
+- `/api/registry-images/[entityType]/[id]` — GET/PATCH/DELETE; server-side validates category-per-entity + single-occupancy.
+- `app/components/RegistryImageGallery.tsx` — new component: optional logo box, hero focal-point editor (preserved from old `PropertyImageGallery`), category filter chips, gallery grouped by category with per-image category dropdown.
+- `app/property-registry/[id]/page.tsx` — uses `RegistryImageGallery` with `showLogoBox={false}` (the existing `PropertyLogoUploader` continues to fill the page-header brand box; phase-2 will migrate it to the new system).
+- `enrich/route.ts` — RITA-enriched images now write `role='exterior'` instead of legacy `'gallery'`.
+
+**Phase 2 (not yet shipped):**
+- Wire `RegistryImageGallery` into stakeholder, vendor, facility, project detail pages.
+- Add a `RegistryLogoBox` component (or migrate `PropertyLogoUploader`) that uses the new system and lives in the page header of every registry detail page.
+- Cloudinary MCP pass: re-tag the 33 reclassified Raleigh assets to `category:unit_layout` so Cloudinary's media library matches the DB.
+
+---
+
+## Session: May 28, 2026 (cont) — HITL review UI built in dale-chat
+
+**Repo:** `MyApps_Air/Derived-State` → `dale-chat/` (separate from Property_Registry repo). Not yet committed there — pre-existing unrelated work is also in flight in that checkout, so the iqid UI is staged separately and awaiting an explicit push directive.
+
+**Files added to dale-chat:**
+- `lib/registry-review.ts` — shared types (`EntityType`, `DedupePair`, `DecisionAction`), `meetsAutoMergeRule()` implementing the compound rule from this session, `displayNameFromRegistryRow()` for per-entity name extraction.
+- `app/api/registry-review/stats/route.ts` — GET; counts per entity_type + score band.
+- `app/api/registry-review/route.ts` — GET; lists pairs with entity_type / status / score-band filters, paginated, sorted by `match_score DESC`.
+- `app/api/registry-review/[id]/route.ts` — GET; one pair with both underlying registry rows fully hydrated for side-by-side compare.
+- `app/api/registry-review/[id]/decision/route.ts` — POST; records `merge_left_into_right` | `merge_right_into_left` | `distinct` | `rejected`. Calls `iqid_mint(et)` to mint iqids on survivor(s), inserts `registry_alias` for the loser's name on merge actions. Admin-gated via `isAdmin()`. **Does NOT yet move FK references or soft-delete losers** — that is the step-7 apply worker.
+- `app/registry-review/page.tsx` — single polymorphic page with entity-type tabs (count badge per tab from stats), status + score-band filters, left list + right side-by-side compare panel, 4 action buttons (Merge L→R, Merge R→L, Distinct, Reject) + reviewer notes. Pairs auto-advance after a decision.
+- `app/components/NavBar.tsx` — one line added: `Review` link next to `Property Registry`.
+
+**Design:**
+- Polymorphic, one URL (`/registry-review`) over all 6 entity types — backed by the polymorphic `registry_dedupe_review` table.
+- Side-by-side compare auto-highlights fields where left ≠ right (amber background) so reviewers see at a glance which row has more data.
+- Auto-merge candidates get an `auto` pill in the list using `meetsAutoMergeRule()` — same compound rule defined for the apply worker, so the UI hints at what the auto-pass will sweep up later.
+- iqid minting happens at decision time (merge: survivor; distinct: both). Aliases captured for future fuzzy matches without needing a second pass.
+
+**Important — RPC dependency:** the decision endpoint calls `registryIq.rpc('iqid_mint', { et: entityType })`. Verified callable with bare string (PostgREST casts to `iqid_entity_type` enum at the function boundary).
+
+**What's not yet built:**
+- Apply worker (step 7): walks resolved `merged` rows, copies `external_ids` from loser into survivor (jsonb merge), reassigns all FK references (property_buildings, property_floors, property_stakeholders, property_documents, project_registry.property_id, etc.) to survivor, soft-deletes loser. Per-entity FK landscape needs auditing before this runs.
+- AI pre-pass (step 4): drafts merge proposals for 0.75–0.98 band into `registry_dedupe_review.ai_proposal` for reviewer consideration.
+- Ingestion rerouting (step 6).
+
+---
+
 ## Session: May 7, 2026 — Canonical taxonomy v1.1 — `property_buildings.form_factor` materialized
 
 **Migration applied (Registry-iQ Supabase `xhafhdaugmgdxckhdfov`):** `Property_Registry/migrations/001_add_form_factor.sql`
