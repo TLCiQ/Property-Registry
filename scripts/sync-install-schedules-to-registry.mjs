@@ -20,6 +20,14 @@
  *   node scripts/sync-install-schedules-to-registry.mjs --apply --deal=24-123-I
  *   node scripts/sync-install-schedules-to-registry.mjs --apply --year=2025
  *   node scripts/sync-install-schedules-to-registry.mjs --apply --all
+ *
+ *   # Default behavior since #6 (2026-05-28): new property/project rows
+ *   # land in registry_intake_staging for HITL review, not in the canonical
+ *   # registries. Reviewer must approve at /registry-review before they
+ *   # become canonical and downstream phase/contact work can proceed.
+ *   # Pass --direct-insert to restore the pre-#6 behavior (legacy bulk
+ *   # imports / explicit opt-out of HITL gating).
+ *   node scripts/sync-install-schedules-to-registry.mjs --apply --direct-insert
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -39,6 +47,16 @@ const DRY = !argv.includes('--apply');
 const ALL = argv.includes('--all');
 const dealArg = argv.find((a) => a.startsWith('--deal='))?.split('=')[1]?.trim();
 const yearArg = argv.find((a) => a.startsWith('--year='))?.split('=')[1]?.trim();
+/**
+ * #6 — Ingestion guardrail (chat 2026-05-28). New property/project rows
+ * default to writing into registry_intake_staging instead of inserting
+ * directly into the canonical registries. Updates to existing rows still
+ * go direct. Pass --direct-insert to restore the legacy behavior (for
+ * one-shot bulk imports or after explicitly opting out of HITL gating).
+ */
+const USE_STAGING = !argv.includes('--direct-insert');
+/** Stable source tag used for both staging.source and registry_alias.source. */
+const STAGING_SOURCE = 'sync-install-schedules-to-registry';
 
 const demandUrl = process.env.DALE_DEMAND_SUPABASE_URL;
 /** Matches dale-chat `lib/supabase.ts` (`DALE_DEMAND_SUPABASE_KEY`). */
@@ -89,6 +107,63 @@ function mergeAdditive(existing, incoming, label) {
     }
   }
   return { patch, conflicts };
+}
+
+/**
+ * Stage a new entity into registry_intake_staging instead of inserting
+ * directly into the canonical registry. Idempotent on
+ * (entity_type, source, source_record_id) so re-running this script
+ * doesn't double-stage. Returns 'STAGED' on success or a duplicate, and
+ * null on failure.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} reg
+ * @param {'property'|'project'|'vendor'|'stakeholder'|'contact'|'facility'} entityType
+ * @param {{
+ *   raw_name: string,
+ *   raw_address_line1?: string|null, raw_city?: string|null, raw_state?: string|null,
+ *   raw_postal_code?: string|null, raw_country?: string|null,
+ *   raw_email?: string|null, raw_phone?: string|null, raw_website?: string|null,
+ *   external_ids?: Record<string, unknown>,
+ *   raw_payload?: Record<string, unknown>,
+ * }} payload
+ * @param {string} sourceRecordId  Stable key from the source (e.g. deal_number).
+ * @param {boolean} dryRun
+ */
+async function stageEntity(reg, entityType, payload, sourceRecordId, dryRun) {
+  const stagingRow = {
+    entity_type: entityType,
+    raw_name: payload.raw_name,
+    raw_address_line1: payload.raw_address_line1 ?? null,
+    raw_city: payload.raw_city ?? null,
+    raw_state: payload.raw_state ?? null,
+    raw_postal_code: payload.raw_postal_code ?? null,
+    raw_country: payload.raw_country ?? null,
+    raw_email: payload.raw_email ?? null,
+    raw_phone: payload.raw_phone ?? null,
+    raw_website: payload.raw_website ?? null,
+    external_ids: payload.external_ids ?? {},
+    raw_payload: payload.raw_payload ?? {},
+    source: STAGING_SOURCE,
+    source_record_id: sourceRecordId,
+  };
+
+  if (dryRun) {
+    console.log(`[DRY-STAGE] ${entityType} → registry_intake_staging:`,
+      payload.raw_name, '/', sourceRecordId);
+    return 'STAGED';
+  }
+
+  const { error } = await reg.from('registry_intake_staging').insert(stagingRow);
+  if (error) {
+    // Unique-index conflict on (entity_type, source, source_record_id) is fine —
+    // means we've already staged this row.
+    if (/duplicate key|unique constraint/i.test(error.message)) {
+      return 'STAGED';
+    }
+    console.error(`stageEntity ${entityType} ${sourceRecordId}:`, error.message);
+    return null;
+  }
+  return 'STAGED';
 }
 
 async function fetchAllFromTable(client, table) {
@@ -272,6 +347,22 @@ async function ensurePropertyStub(reg, row, baseDeal, dryRun) {
     source: 'install_schedules',
     notes: 'Stub from DALE-Demand install_schedules sync — verify address and enrich.',
   };
+
+  if (USE_STAGING) {
+    // #6 guardrail: never silently mint a new property. Stage for HITL.
+    const sourceRecordId = baseDeal ? `deal:${baseDeal}` : `${name}@${city || ''}/${state || ''}`;
+    await stageEntity(reg, 'property', {
+      raw_name: insert.property_name,
+      raw_address_line1: insert.address_line1,
+      raw_city: insert.city,
+      raw_state: insert.state_province,
+      raw_postal_code: insert.postal_code,
+      raw_country: insert.country,
+      external_ids: ext,
+      raw_payload: insert,
+    }, sourceRecordId, dryRun);
+    return 'STAGED';  // sentinel — downstream skips when it sees this
+  }
 
   if (dryRun) {
     console.log('[DRY] would create property_registry stub:', insert.property_name, city, state);
@@ -762,6 +853,8 @@ async function main() {
 
   let createdProjects = 0;
   let updatedProjects = 0;
+  let stagedProperties = 0;
+  let stagedProjects = 0;
   let conflictLog = [];
 
   for (const row of filtered) {
@@ -782,6 +875,13 @@ async function main() {
       propertyId = await ensurePropertyStub(reg, row, baseDeal, DRY);
     }
 
+    // #6 guardrail: if the property was staged (not canonical), we can't
+    // build downstream FK rows. Count it and skip to the next install row.
+    if (propertyId === 'STAGED') {
+      stagedProperties++;
+      continue;
+    }
+
     const { data: existingProject } = await reg
       .from('project_registry')
       .select('*')
@@ -797,6 +897,16 @@ async function main() {
         property_id: propertyId,
         external_ids: installScheduleExternalIds(row),
       };
+      if (USE_STAGING) {
+        // #6 guardrail: stage new projects for HITL rather than minting.
+        await stageEntity(reg, 'project', {
+          raw_name: projectPayload.project_name || parsed.projectId,
+          external_ids: { ...insertPayload.external_ids, deal_number: parsed.projectId, property_id_resolved: propertyId },
+          raw_payload: insertPayload,
+        }, `deal:${parsed.projectId}`, DRY);
+        stagedProjects++;
+        continue;  // downstream phases / contacts need canonical project_id
+      }
       if (DRY) {
         console.log(`[DRY] insert project_registry ${parsed.projectId} property=${propertyId}`);
       } else {
@@ -868,7 +978,12 @@ async function main() {
   }
 
   console.log(
-    `\nDone. createdProjects=${createdProjects} updatedProjects=${updatedProjects} dryRun=${DRY}`,
+    `\nDone. createdProjects=${createdProjects} updatedProjects=${updatedProjects}` +
+      ` stagedProperties=${stagedProperties} stagedProjects=${stagedProjects}` +
+      ` mode=${USE_STAGING ? 'staging' : 'direct-insert'} dryRun=${DRY}` +
+      (stagedProperties + stagedProjects > 0
+        ? `\n→ ${stagedProperties + stagedProjects} new rows went to registry_intake_staging. Review at /registry-review before re-running this script to wire downstream phases + contacts.`
+        : ''),
   );
 }
 
