@@ -1,6 +1,37 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** May 20, 2026
+**Last updated:** May 28, 2026
+
+## Session: May 28, 2026 — Apply worker + Review UI Apply panel (closes the HITL loop)
+
+**The full HITL dedupe pipeline is now end-to-end functional:** scan → review queue → decision → preview → apply → audit.
+
+**SQL (Registry-iQ Supabase `xhafhdaugmgdxckhdfov`):**
+
+- `scripts/migration-iqid-dry-run-merge.sql` — `iqid_dry_run_merge(entity_type, loser_id, survivor_id) → jsonb`. Walks `pg_constraint` at runtime, returns a plan: FK repoint counts per source table, external_ids merge with conflicts, soft-delete target, alias_insert. No mutations. Used by the preview endpoint.
+- `scripts/migration-iqid-apply-merge.sql` — `iqid_apply_merge(entity_type, loser_id, survivor_id, reviewer) → jsonb`. Mutating companion: mints survivor.iqid if missing → merges external_ids additively (survivor wins on conflict) → UPDATEs every FK row → inserts `registry_alias` (loser name → survivor iqid, ON CONFLICT DO NOTHING) → soft-deletes loser (`property_status='inactive'`, `project_status='inactive'`, or `is_active=false`) → appends `[MERGED ...]` marker to notes. Atomic plpgsql transaction.
+- `registry_dedupe_review` columns added: `applied_at timestamptz`, `apply_report jsonb`, `apply_error text`; partial index `(entity_type, applied_at) WHERE review_status='merged' AND applied_at IS NULL` for pending-apply queries.
+
+**dale-chat code (Derived-State):**
+
+- `/api/registry-review/[id]/apply-preview` (GET, admin-gated) — calls `iqid_dry_run_merge` for the resolved-merge pair, returns the plan jsonb.
+- `/api/registry-review/[id]/apply` (POST, admin-gated, idempotent on `applied_at`) — calls `iqid_apply_merge`, persists `applied_at` + `apply_report`, or records `apply_error` on failure.
+- `ApplyPanel` component on the registry-review page: three modes depending on pair state — `needs_review` shows the 4 decision buttons + notes; `merged & !applied_at` shows Preview → Confirm & Apply flow with FK row counts and external_ids conflicts surfaced; `merged & applied_at` shows the Applied badge + collapsible report; `apply_error` set shows a Retry path.
+- `DedupePair` type and list-API select expanded with the new columns.
+
+**FK landscape (queried via `pg_constraint` so it stays current):** 42 FK constraints across the 6 entity registries. Highest-coverage targets: `project_registry` (18 inbound FKs across schedule, install, scopes, milestones, etc.), `property_registry` (10 inbound), `stakeholder_registry` (7 inbound, includes self-FK on `parent_company_id`).
+
+**Tested live against CAMPUS EDGE-RALEIGH × CAMPUS EDGE - RALEIGH (score 1.000):** dry-run reports 2 `property_stakeholders` rows to repoint, 5 external_ids conflicts (survivor wins, loser values audited), 1 soft-delete, 1 alias_insert. Total: 2 FK rows + 0 keys added (full overlap) + status flip.
+
+**Remaining queue:**
+- **#7c admin sweep** — bulk-apply all `merged & !applied_at` pairs that match the compound auto-merge rule (`score >= 0.98 AND (city_match+state_match OR external_ids_overlap OR per-entity-signal)`).
+- **#6 ingestion rerouting** — switch all writes to go through `registry_intake_staging` instead of direct registry INSERT.
+- **#4 AI pre-pass** — LLM drafts merge proposals into `ai_proposal` for the 0.75–0.98 band.
+- **#13 Cloudinary MCP re-tag** — 33 Raleigh floorplan assets to `category:unit_layout` (DB already correct; cosmetic).
+
+**Cumulative session totals: 8 Property_Registry commits + 7 Derived-State commits.**
+
+---
 
 ## Session: May 20, 2026 — `iqid` identity scheme + intake staging + dedupe review
 
