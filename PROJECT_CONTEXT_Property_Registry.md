@@ -2,6 +2,33 @@
 
 **Last updated:** May 28, 2026
 
+## Session: May 28, 2026 — Coalesce loser values into NULL survivor columns on merge
+
+User: "when i say merge L into R which fields take precedence if both are populated"
+
+Tracing `iqid_apply_merge` revealed that the answer was "**R wins absolutely** — loser data never copied forward, even when survivor was NULL." Surprising and not what reviewers want. Standard CRM dedupe behavior is "survivor wins where populated; loser fills gaps." Switched to that.
+
+**SQL (Registry-iQ):**
+- `scripts/migration-iqid-coalesce-on-merge.sql` — updates both `iqid_dry_run_merge` and `iqid_apply_merge`.
+- New step between external_ids merge and FK repoints: walk `jsonb_each(loser_row)`, find columns where `(survivor.col IS NULL AND loser.col IS NOT NULL)`, build dynamic `UPDATE ... SET col1 = COALESCE(s.col1, l.col1), col2 = COALESCE(s.col2, l.col2), ... FROM <table> l WHERE s.id=$1 AND l.id=$2`.
+- Blacklist (never coalesced): `id, iqid, external_ids, notes, geo_point, created_at, updated_at, created_by, updated_by, normalized_name, display_name, property_status, project_status, is_active`.
+- New action emitted in the plan: `{ kind: 'coalesce_fields', fields_filled: [{col, value}, ...], merge_policy: '...' }`. Both functions emit it — dry-run shows what *would* happen, apply shows what *did*.
+- Verified live on Hub Gainesville University pair: dry-run reported 6 columns to fill (address_line1, owner_name, postal_code, property_url, total_beds=370, total_units=160).
+
+**dale-chat (Derived-State):**
+- `ApplyPanel` preview now renders a "Fields filled from loser" block: emerald header + 2-col grid (col-name | value) listing every coalesce target. Summary chip updated to include "N fields filled" count.
+
+**Semantics summary (post-this-change):**
+| Merge L into R, where R is survivor | Result |
+|---|---|
+| Both populated, different values | R wins (loser value preserved on soft-deleted row only) |
+| R populated, L null | R wins (unchanged) |
+| **R null, L populated** | **L fills the gap** (NEW) |
+| Both null | stays null |
+| `external_ids` keys | Additive merge: L keys not on R get copied. On key collision R wins. (Unchanged) |
+
+---
+
 ## Session: May 28, 2026 — Inline edit of dedupe-relevant fields (replaces rename)
 
 User: "rather than just rename can we open all fields to edit?"
