@@ -2,6 +2,46 @@
 
 **Last updated:** May 29, 2026
 
+## Session: May 29, 2026 — Block project merge when project_id differs
+
+User: "in the registry review if the project ids are different they should not be merge candidates"
+
+**Rule:** If both sides of a **project** dedupe pair have non-null, non-empty `project_id` values and they differ, the pair is **not mergeable** (distinct deals — e.g. UF Sage deal # vs BSI NetSuite #). Pairs may still appear in the queue for Distinct / Reject; merge buttons and auto-sweep are blocked.
+
+**SQL (Registry-iQ, applied live):**
+- `scripts/migration-iqid-project-id-merge-block.sql` — `iqid_project_ids_block_merge(a,b)`, backfill `match_reason` (`project_id_left/right`, `project_id_conflict`, `merge_blocked`), sweep filter
+- `scripts/migration-iqid-apply-merge-project-id-guard.sql` — guard at top of `iqid_apply_merge`
+- `scripts/dedupe-scan-existing-registries.sql` — future project scan excludes conflicting pairs at INSERT
+
+**dale-chat (needs deploy):**
+- `lib/registry-review.ts` — `projectIdsBlockMerge`, `canMergePair`; `meetsAutoMergeRule` respects block
+- `app/registry-review/page.tsx` — "not mergeable" badge, amber banner, disabled merge buttons
+- `app/api/registry-review/[id]/decision/route.ts` — 422 on merge when blocked
+
+**Live counts (post-backfill):** ~1,564 open project pairs flagged `merge_blocked`; project auto-sweep qualifying dropped to 0 (property sweep unchanged).
+
+---
+
+## Session: May 29, 2026 — Auto-merge sweep fixed (three blockers)
+
+User: "the automerge is not working"
+
+**Symptoms:** `iqid_sweep_auto_merge` found 843 qualifying pairs but every apply failed; 22+ review rows stuck at `review_status='merged'` with `applied_at IS NULL` and `apply_error` set.
+
+**Root causes (all fixed live on Registry-iQ `xhafhdaugmgdxckhdfov`):**
+
+1. **FK repoint type cast** — `iqid_apply_merge` read registry id values as `::text` then assigned them to uuid FK columns without cast → `column "property_id" is of type uuid but expression is of type text`. Fixed in `scripts/migration-iqid-fix-fk-repoint-types.sql` using `format_type()` + `$1::source_col_type`.
+
+2. **Unique constraint on repoint** — project merges failed on `project_team_assignments (project_id, team_member_id, role)` when both projects had the same PM. Fixed in `scripts/migration-iqid-fk-repoint-dedupe-conflicts.sql`: DELETE loser child rows that would duplicate survivor rows on any unique constraint including the FK column, then repoint.
+
+3. **project_status CHECK** — merge soft-delete sets `project_status = 'inactive'` but `project_registry` CHECK only allowed operational states + `deleted` (never `inactive`). Fixed in `scripts/migration-project-status-inactive.sql` (property already had `inactive`).
+
+**Validation:** sweep `max_count=3` → **3/3 succeeded**. Retried all previously stuck merged pairs via `scripts/retry-stuck-merge-applies.sql` → **0 remaining apply_errors** on merged rows.
+
+**Queue state post-fix:** ~840 qualifying auto-merge pairs remain; sweep button in dale-chat `/registry-review` should now increment `succeeded` counts.
+
+---
+
 ## Session: May 29, 2026 — Combine identifiers on merge (don't discard loser's refs)
 
 User: "can we arrange to combine project number or external references rather than writing over on a merge"

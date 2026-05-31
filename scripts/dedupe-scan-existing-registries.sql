@@ -101,6 +101,19 @@ SELECT
     'name_right',          b.project_name,
     'norm_left',           a.normalized_name,
     'norm_right',          b.normalized_name,
+    'project_id_left',     a.project_id,
+    'project_id_right',    b.project_id,
+    'project_id_match',    (a.project_id IS NOT NULL AND b.project_id IS NOT NULL AND trim(a.project_id) = trim(b.project_id)),
+    'project_id_conflict', (
+      a.project_id IS NOT NULL AND b.project_id IS NOT NULL
+      AND trim(a.project_id) <> '' AND trim(b.project_id) <> ''
+      AND trim(a.project_id) <> trim(b.project_id)
+    ),
+    'merge_blocked', (
+      a.project_id IS NOT NULL AND b.project_id IS NOT NULL
+      AND trim(a.project_id) <> '' AND trim(b.project_id) <> ''
+      AND trim(a.project_id) <> trim(b.project_id)
+    ),
     'd365_op_code_left',   a.d365_opportunity_code,
     'd365_op_code_right',  b.d365_opportunity_code,
     'sheet_name_left',     a.sheet_name,
@@ -116,6 +129,12 @@ JOIN public.project_registry b
  AND b.normalized_name IS NOT NULL
  AND a.normalized_name % b.normalized_name
 WHERE extensions.similarity(a.normalized_name, b.normalized_name) >= 0.75
+  -- Different non-null project_id = distinct deals, not merge candidates.
+  AND NOT (
+    a.project_id IS NOT NULL AND b.project_id IS NOT NULL
+    AND trim(a.project_id) <> '' AND trim(b.project_id) <> ''
+    AND trim(a.project_id) <> trim(b.project_id)
+  )
 ON CONFLICT (
   entity_type,
   LEAST(left_id::text, right_id::text),

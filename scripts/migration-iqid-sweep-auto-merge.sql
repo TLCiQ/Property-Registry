@@ -107,16 +107,20 @@ DECLARE
 BEGIN
   -- Count qualifying pairs (for both dry-run and final report)
   SELECT count(*) INTO v_qualifying
-  FROM public.registry_dedupe_review
-  WHERE review_status = 'needs_review'
-    AND applied_at IS NULL
-    AND match_score >= 0.98
-    AND (p_entity_type IS NULL OR entity_type = p_entity_type)
+  FROM public.registry_dedupe_review r
+  WHERE r.review_status = 'needs_review'
+    AND r.applied_at IS NULL
+    AND r.match_score >= 0.98
+    AND (p_entity_type IS NULL OR r.entity_type = p_entity_type)
+    AND NOT (
+      r.entity_type = 'project'
+      AND public.iqid_project_ids_block_merge(r.left_id, r.right_id)
+    )
     AND (
-      ((match_reason->>'city_match')::boolean AND (match_reason->>'state_match')::boolean)
-      OR (match_reason->>'external_ids_overlap')::boolean
-      OR (entity_type = 'contact'     AND (match_reason->>'email_match')::boolean)
-      OR (entity_type = 'stakeholder' AND (match_reason->>'website_match')::boolean)
+      ((r.match_reason->>'city_match')::boolean AND (r.match_reason->>'state_match')::boolean)
+      OR (r.match_reason->>'external_ids_overlap')::boolean
+      OR (r.entity_type = 'contact'     AND (r.match_reason->>'email_match')::boolean)
+      OR (r.entity_type = 'stakeholder' AND (r.match_reason->>'website_match')::boolean)
     );
 
   IF p_dry_run THEN
@@ -130,16 +134,20 @@ BEGIN
 
   FOR v_pair IN
     SELECT id, entity_type, left_id, right_id, match_reason, match_score
-    FROM public.registry_dedupe_review
-    WHERE review_status = 'needs_review'
-      AND applied_at IS NULL
-      AND match_score >= 0.98
-      AND (p_entity_type IS NULL OR entity_type = p_entity_type)
+    FROM public.registry_dedupe_review r
+    WHERE r.review_status = 'needs_review'
+      AND r.applied_at IS NULL
+      AND r.match_score >= 0.98
+      AND (p_entity_type IS NULL OR r.entity_type = p_entity_type)
+      AND NOT (
+        r.entity_type = 'project'
+        AND public.iqid_project_ids_block_merge(r.left_id, r.right_id)
+      )
       AND (
-        ((match_reason->>'city_match')::boolean AND (match_reason->>'state_match')::boolean)
-        OR (match_reason->>'external_ids_overlap')::boolean
-        OR (entity_type = 'contact'     AND (match_reason->>'email_match')::boolean)
-        OR (entity_type = 'stakeholder' AND (match_reason->>'website_match')::boolean)
+        ((r.match_reason->>'city_match')::boolean AND (r.match_reason->>'state_match')::boolean)
+        OR (r.match_reason->>'external_ids_overlap')::boolean
+        OR (r.entity_type = 'contact'     AND (r.match_reason->>'email_match')::boolean)
+        OR (r.entity_type = 'stakeholder' AND (r.match_reason->>'website_match')::boolean)
       )
     ORDER BY match_score DESC, created_at ASC
     LIMIT p_max_count
