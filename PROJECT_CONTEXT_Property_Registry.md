@@ -1,6 +1,6 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** May 29, 2026
+**Last updated:** May 31, 2026
 
 ## Session: May 29, 2026 — Contact review: editable linked stakeholder
 
@@ -41,6 +41,54 @@ User: "the key now is to match projects to properties using the ship to addresse
 **Ship-to matching doctrine (2026-05-28):** `scripts/lib/sage-shipto-match.mjs` is the shared module — always call `enrichSageOrder()` before matching; project→Sage joins include ship-to address; Sage→property tiers lead with address/property_key before fuzzy name. Sage header sync updated in `Sage-iQ/scripts/sage_oe_map.py` to write `property_key` on every row.
 
 **Apply run (2026-05-31):** Backfilled `property_key` on ~5,600 ship_to rows (`backfill-sage-shipto-property-key.mjs`). Re-ran `--apply --promote --min-confidence=95` → **477 promoted** (1,884 / 2,799 projects linked). Sage header sync to snapshot `2026-05-28` running for current-window refresh. Historical Excel snapshots (pre-2025-03-22) still lack ship_to — only ~5,703 / 13,356 distinct order_numbers have ship_to anywhere.
+
+---
+
+## Session: May 31, 2026 — Comprehensive Sage ship-to backfill (2019→)
+
+User: "execute an expanded sage backfill. go as far back and be as comprehensive as possible"
+
+**Blocker fixed:** `run-comprehensive-sage-shipto-backfill.sh` was aborting (exit 127) because `source .env.local` hit invalid shell identifier `PDF.CO_API_KEY=...`. Script now relies on `SAGE_ENV_FILE` (Python) + dotenv (Node) only.
+
+**Running (PID ~54611, resumed skip=300):**
+```bash
+bash scripts/run-comprehensive-sage-shipto-backfill.sh --resume
+```
+- Phase 1: `Sage-iQ/scripts/sync_sage_orders_headers_from_sage.py --comprehensive --snapshot-date 2026-05-28 --state-dir data/sage_header_sync/comprehensive`
+- Phase 2: `backfill-sage-shipto-property-key.mjs --apply`
+- Phase 3: `sync-sage-shipto-project-property.mjs --apply --promote --min-confidence=95`
+- Log: `logs/sage-comprehensive-backfill-20260531-114859.log`
+- Pace: ~100 orders/page, ~40–55s/page, ~77% map rate, ~100% ship_to on mapped rows; ~23% skipped (no TYPE in Sage optional fields)
+- ETA: ~100+ pages → **several hours** for Phase 1 alone
+
+**Monitor:**
+```bash
+tail -f "/Users/geoffreyjackson/Dropbox/The Living Company/TLC iQ/Property_Registry/logs/sage-comprehensive-backfill-20260531-114859.log"
+cat "/Users/geoffreyjackson/Dropbox/The Living Company/TLC iQ/Sage-iQ/data/sage_header_sync/comprehensive/sync_state.json"
+```
+
+**Resume if interrupted:** `bash scripts/run-comprehensive-sage-shipto-backfill.sh --resume`
+
+**Baseline at launch:** DALE `sage_orders` total 39,816 rows; 11,344 with ship_to; snapshot `2026-05-28` had 3,006 rows and growing as sync runs.
+
+---
+
+## Session: May 31, 2026 — Container destination guard (stop unknown warehouse/property)
+
+User: inbound containers to unknown warehouse or property **should be stopped**.
+
+**Policy + tooling:** `docs/CONTAINER_DESTINATION_GUARD.md`, `scripts/lib/container-destination-guard.mjs`, `scripts/enforce-container-destination-guard.mjs`
+
+- Validates Chain-iQ `container_loads.destination` against Registry-iQ property sites + canonical warehouses (Brighton TN BSI staging, UF blocklist warehouses, Garland TX, …).
+- **Hold:** `status2 = HOLD:UNKNOWN_DEST` + audit note on `note`.
+- Active inbound only (container # assigned or SHIPPED/LOADED/ARRIVED/… — not inert BOOKED placeholders).
+
+**Bloomington dry-run (323 rows):** 282 OK (Hub II → Brighton TN staging + Bloomington IN site allowed), **3 HOLD** — air-freight rows to `INDIANPOLIS, IN 46219` (2×) and typo `BLOMINGTON, IN 47404`.
+
+```bash
+node scripts/enforce-container-destination-guard.mjs --dry-run --project "Bloomington"
+node scripts/enforce-container-destination-guard.mjs --apply --project "Bloomington"
+```
 
 ---
 
@@ -1247,8 +1295,11 @@ Scripts in `Property_Registry/scripts/`:
 | `remediate-contact-registry.mjs` | Normalize phones/names; re-harvest iQ PR contacts; runs domain + property linkers |
 | `link-contacts-by-domain.mjs` | Email domain → stakeholder match/create; Firecrawl/homepage company names; cache in `.cache/domain-company-cache.json` |
 | `link-contacts-by-property.mjs` | `external_ids.property_hints` → property_stakeholders → company link |
+| `reparse-install-schedules-contacts.mjs` | DALE `install_schedules_enriched` → `contact_registry` (warehouse + on_site_installer); warehouse address → stakeholder; Firecrawl domain pass + `link-contacts-by-domain` |
 
 dale-chat: `/contact-registry/[id]` detail UI; `scripts/batch-contact-rita-enrich.mjs` for capped LinkedIn/photo backfill.
+
+**May 2026 reparse run:** 1,168 enriched schedule rows → **775** new/updated contacts, **323** new person↔company associations, **1,297** `property_hints` on contacts; domain linker + Firecrawl polished remaining email domains.
 
 ### What was built
 Standalone contact (person) management with RITA deep profiling — LinkedIn scraping, work history capture, behavioral/psychological profiling.
