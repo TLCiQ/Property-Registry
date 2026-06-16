@@ -25,3 +25,4 @@ npm-debug.log*
 
 # Optional local spreadsheets (not part of source)
 *.xlsx
+.firecrawl/

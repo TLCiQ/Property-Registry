@@ -1,6 +1,27 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** May 31, 2026
+**Last updated:** Jun 15, 2026
+
+## Session: Jun 15, 2026 — Morgan Hill enrichment via Firecrawl (morganhillapts.com)
+
+User: "please use firecrawl and scour this site for images and information to enrich the morgan hill property registry https://morganhillapts.com/"
+
+**Target:** `property_registry` id `a30d446c-ee4a-4fe0-a76e-e4f9bed0e3b0` (Morgan Hill Apartments, Carrollton TX) — Registry-iQ Supabase `xhafhdaugmgdxckhdfov`.
+
+**Method:** Firecrawl CLI (`map` + `scrape --format markdown,links`). Site has only 2 pages (home + `?page_id=61` floorplans). Scrape artifacts under `.firecrawl/` (gitignored).
+
+**Images:** 4 official assets uploaded to Cloudinary (`dut68koei`) under `property-registry/<id>/` via signed upload (`.firecrawl/scratchpad/upload-cloudinary.mjs`, reads `CLOUDINARY_URL` from dale-chat `.env.local`):
+- `morgan-hill-final-exterior-rendering.jpg` (2560×1440) → **hero** (also set `hero_image_url`, replacing prior research image)
+- `morgan-hill-rendering.png` (exterior), `morgan-hill-billingsley-collection.jpg` (exterior), `morgan-hill-illustrated-site-map.jpg` (`site_plan`)
+- Excluded: a generic stock photo (`man-earphones…`) and a leftover template image (`AH_Not-Approved-IMages…`).
+
+**Fields updated:** `opening_year=2026` (consistent with existing `opening_date` 2026-12-01 / site "Coming Winter 2026"); `has_pool/has_fitness_center/has_pet_friendly/has_clubhouse=true`; `enrichment_sources += morganhillapts.com`; `source_detail`, `last_enrichment_at`, `notes` appended (Billingsley Collection brand, taglines, opening timing).
+
+**Coordinates:** site map embed was unusable (plotted in Mississippi). Instead geocoded the canonical address (3885 Midway Road, Carrollton TX 75007) via Google Maps → `latitude=33.0179734, longitude=-96.8435763`, cross-checked with OSM/Nominatim (~165 m agreement; address-level precision for a pre-opening build). `geo_point` auto-synced by trigger to `POINT(-96.8435763 33.0179734)`.
+
+**Data-quality flags (NOT ingested):** (1) the site's Google-map embed uses **wrong coordinates** (lat 33.27 / lng -90.99 plots in Mississippi) — did not use them. (2) Floorplans page is **unreplaced template copy** ("Hartwood… Sloan Corners") with an unrendered `[spaces asset_id="276"]` widget → unit mix not confirmable from site; left `total_units/total_beds` untouched. (3) `data_quality_score` left at 0 (scoring formula unknown — did not fabricate).
+
+---
 
 ## Session: May 29, 2026 — Contact review: editable linked stakeholder
 
