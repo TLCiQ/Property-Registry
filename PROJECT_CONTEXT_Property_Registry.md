@@ -1,6 +1,32 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** Jun 15, 2026
+**Last updated:** Jun 19, 2026
+
+## Session: Jun 19, 2026 — Morgan Hill layouts + shop-drawing images (first pass)
+
+Plan: `~/.cursor/plans/morgan_hill_layouts_drawings_7e73dd7e.plan.md`. Premise: the Buildings/Floors/Units/Unit Types tabs are already built + interlinked; this pass adds the missing **image layer** + small fixes, with **no surrogates** (missing assets stay empty and are recorded as gaps). Target property `a30d446c-ee4a-4fe0-a76e-e4f9bed0e3b0`; Registry-iQ Supabase `xhafhdaugmgdxckhdfov`; Cloudinary `dut68koei`.
+
+**Schema (additive; applied):** `property_floors.floor_plan_url text` + `images jsonb`; new `property_shop_drawings` table (drawing_no, title, drawing_type, version, state, thumbnail_url, pdf_url, page_count, unit_type_code, source_path, notes). Migration files: `scripts/migration-floorplans-and-shop-drawings.sql`. (Reconcile + unit-tags migrations from the prior pass: `migration-reconcile-morganhill-buildings.sql`, `ingest-morganhill-structure.mjs`.)
+
+**Asset ingestion** (`scripts/ingest-morganhill-assets.mjs`, signed Cloudinary upload, `pg_1,f_png` thumbnail + source PDF):
+- **Shop drawings = 23 rows.** 17 cabinet configs (`MW01..MW18` that have a `KM PDFs/MWxx.pdf`) as `kitchen_cabs`; 6 interior-elevation sheets (`A701–A706`, A705/A706 → `vanity`, rest → `kitchen_cabs`). `version='2026-04-06'` (FOR INSTALL set), `state='not_started'` (unverified). `unit_type_code` left null (M:N rollups deferred).
+- **Floor plans = 11/11 floors.** Building 1 Levels 1–5 → per-level `1-A2x0 OVERALL PLAN` PDFs; Buildings 2 & 3 → the combined SCHEME building PDF on each of their 3 floors (flagged `combined:true` in `images`). Thumbnail verified HTTP 200 `image/png`.
+
+**Gaps recorded (no surrogates):** cabinet configs `MW04.5/MW05/MW06` referenced by the Matrix have **no PDF** → no shop drawing. **Unit-type finish layouts**: `UNIT PLANS_5.2025.pdf` has no per-type page map → `layout_asset_urls` left empty for all 86 types (Matrix Layout column shows the empty placeholder). Saved to `.firecrawl/mh-asset-gaps.json`.
+
+**Bedrooms backfilled (Jun 19, user-confirmed):** `A*` → `standard_bedrooms=1`, `B*` → `2` for all 86 types (`bedrooms_structural` GENERATED). Structural bed sum = 479 (Σ bedrooms×unit_count). **`total_sqft` still NULL**; `beds_per_unit=1` uniformly (default, MH-02 still open) — so Total Beds in the matrix footer stays 390 while 26 B-types show **Beds=1** vs **Bedrooms=2** (honest gap, no surrogate). `bathrooms`/`unit_count` from Matrix. Totals: 390 units, 480 total baths.
+
+**UI (dale-chat `app/property-registry/[id]/page.tsx` + components):**
+- New shared `AssetPreviewModal.tsx` (page-1 PNG preview + "Download PDF").
+- **Floors tab** (`PropertyFloorsTab.tsx`) + **Buildings tab** floor rows: clickable floor-plan thumbnail → preview modal. Fixed misleading rollup help text and relabeled the FF&E SKU piece estimate as a **separate optional estimate** (decoupled from the unit/bed/bath rollup).
+- **"Unit Types" tab → "Unit Type Matrix":** clickable layout thumbnail + name → `UnitTypeDetailModal` (now has "Download as PDF"); columns `Bedrooms` (structural, "—" when unknown), `Beds` (only shown when a known bedroom count differs), `Bathrooms`, `Unit Count`, `Total Beds`, new `Total Baths` (Σ bathrooms×unit_count, footer-summed); dropped the legacy `layout_type` text column + its add-form input.
+- New **"Shop Drawings" tab** (`PropertyShopDrawingsTab.tsx` + `app/api/property-registry/[id]/shop-drawings/route.ts` GET/PATCH): thumbnail grid with drawing #, Drawing Type, Version, editable State (admin), type/state filters, preview modal w/ Download. Cross-link rollups (building/floor/unit/room counts) deferred.
+- **Opening-year timezone fix:** header + `openingYear` now use `opening_date.slice(0,4)`; Overview "Opening Date" formats with `timeZone:'UTC'`. DB `opening_year` realigned 2026 → **2027** (matches `opening_date` 2027-01-01).
+- **RITA relocation:** the two persistent RITA surfaces (Proposals panel + Reads history) moved from the top of the tab content to the **bottom of the page**. The three transient run-status banners (no-results prompt, staged-run banner, findings review) were left near the RITA action button (they appear only during/after an active run).
+
+**Validation:** `npm run build` (dale-chat) green; property route compiles. DB spot-checks: 23 shop drawings, 11 floor plans (thumbnail 200), 86 unit types / 390 units / 480 baths.
+
+---
 
 ## Session: Jun 15, 2026 — Morgan Hill enrichment via Firecrawl (morganhillapts.com)
 
