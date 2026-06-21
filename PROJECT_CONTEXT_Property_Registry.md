@@ -1,8 +1,30 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** Jun 19, 2026
+**Last updated:** Jun 20, 2026
 
-## Session: Jun 19, 2026 — Morgan Hill layouts + shop-drawing images (first pass)
+## Session: Jun 20, 2026 — Morgan Hill enrichment campaign + RITA outlier scan
+
+**Pilot:** `MH-REGISTRY-ENRICH-001` for property `a30d446c-ee4a-4fe0-a76e-e4f9bed0e3b0`.
+
+**Schema (pending apply on Registry-iQ):** `scripts/migration-property-enrich-review.sql` — `property_enrich_campaigns`, `property_enrich_review` (token + `item_payloads` jsonb + `answers` jsonb), `property_enrich_review_events`.
+
+**dale-chat additions:**
+- `lib/enrich-review-schema.ts` — question kinds: boolean, single/multi-select, rank, text, number, image_annotation (phase 2).
+- `lib/matrix-outlier-detector.ts` — Tier A/B/C outlier rules (BR/bath, mixed bath/kitchen within type, missing shop PDFs).
+- `lib/property-enrich-review-engine.ts` — primary token email + **separate witness emails** (text-only, no link; NOT Resend CC).
+- `app/property-enrich-review/[token]/page.tsx` — structured Q&A review surface.
+- `app/components/RitaMatrixOutliersPanel.tsx` — proactive outlier list + "Launch enrichment campaign" (admin).
+- `app/api/property-registry/[id]/matrix-outliers/route.ts`
+
+**Witness pattern:** `witness_emails` stored for audit; each witness gets their own `buildWitnessEmailContent()` send with questions listed in prose — no token, no button. Primary reviewer gets the only interactive link.
+
+**Apply chain:** submitted answers → `review_status=submitted` (apply worker to PATCH `property_units` / `property_unit_types` is NEXT after first pilot responses).
+
+**Migration applied (Jun 20):** `property_enrich_campaigns`, `property_enrich_review`, `property_enrich_review_events` live on Registry-iQ `xhafhdaugmgdxckhdfov`.
+
+**File collection (deferred — MH-12):** add `file_upload` question kind + `property_enrich_review_files` table (`scripts/migration-property-enrich-review-files.sql`). Quarantine → malware scan → promote to Cloudinary. Multi-file per question supported in schema design.
+
+---
 
 Plan: `~/.cursor/plans/morgan_hill_layouts_drawings_7e73dd7e.plan.md`. Premise: the Buildings/Floors/Units/Unit Types tabs are already built + interlinked; this pass adds the missing **image layer** + small fixes, with **no surrogates** (missing assets stay empty and are recorded as gaps). Target property `a30d446c-ee4a-4fe0-a76e-e4f9bed0e3b0`; Registry-iQ Supabase `xhafhdaugmgdxckhdfov`; Cloudinary `dut68koei`.
 
@@ -1601,3 +1623,16 @@ New attributes: `unit_features text[]` (flexible tags) and `upgrade_tier` (`stan
 New bed-count roll-up columns on parent tables: `property_floors.total_beds_on_floor`, `property_buildings.total_beds_in_building`. These complement the existing `property_registry.total_beds`.
 
 **Scripts in `scripts/`** updated 2026-05-09 to use the post-006 column set: `sync-production-to-registry.mjs`, `seed-from-install-iq.mjs`, `migrate-to-registry-iq.mjs` (the embedded `CREATE TABLE` for `property_unit_types` now reflects the post-006 schema; later additions like RITA enrichment tables and `fn_apply_rita_proposal` live in their own migration files in `/Users/geoffreyjackson/MyApps/TURBO/migrations/`).
+
+---
+
+## Session log — Jun 20, 2026 (enrichment campaign monitor)
+
+**Deliverable:** Admin **Campaign monitor** on Morgan Hill property page (dale-chat `PropertyEnrichCampaignSection`).
+
+- **API:** `GET /api/property-registry/[id]/enrich-campaign-status` (admin-only; includes active review URL).
+- **Engine:** `loadEnrichCampaignStatus()` in `lib/property-enrich-review-engine.ts`.
+- **UI:** Cyan panel above campaign preview — sent time, recipient, link opened, submitted, file counts, expires, copy active link, collapsible event log, refresh + 60s poll while pending.
+- **SYNC-iQ dash:** Enrich-iQ `/sync/registry-enrich` — cross-property table + KPI cards; nav under Outbound; home page tile links to monitor. Reads Registry-iQ directly.
+- **Live state (verified earlier):** `MH-REGISTRY-ENRICH-001` sent to `gjackson@livingcompany.com`, review pending (not opened), 9 items, 0 files.
+- **Remaining:** Deploy dale-chat + Enrich-iQ to prod so monitors are visible without Supabase SQL.
