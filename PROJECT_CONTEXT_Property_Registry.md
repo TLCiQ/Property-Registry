@@ -2,6 +2,25 @@
 
 **Last updated:** Jun 20, 2026
 
+## Session: Jun 20, 2026 — Registry drill-through navigation (dale-chat)
+
+**Goal:** Property Registry data should be travelable — clicking a linked entity opens detail or jumps to the right tab.
+
+**dale-chat changes (not yet deployed):**
+- `app/components/RegistryDrillLink.tsx` — shared cyan link button for drill-through fields.
+- `lib/property-registry-nav.ts` — drill filter types + merge/clear helpers (nested AND semantics).
+- `app/components/RegistryDrillFilterBar.tsx` — removable filter chips + “Showing N of M” counts.
+- **Nested filters:** clicking a link merges dimensions (building + floor + unit type + unit # + SKU). Filters persist across tab switches until cleared. Changing building clears floor (child scope reset).
+- **Unit #s tab:** filters table; building/floor/SKU drills merge filters + navigate.
+- **Floors tab:** building/floor filters hide non-matching sections + scroll/highlight; rollup ×count → filtered Unit #s with parent building/floor context.
+- **SKUs tab:** filters assignments by unit type and/or SKU.
+- **Unit type modal:** “N units” / “SKU lines” jump to filtered tabs.
+- **URL hash persistence:** tab + nested filters encoded in `location.hash` (shareable, survives refresh). Drill navigation uses `pushState`; tab bar / chip edits use `replaceState`. Back/forward restores hash.
+
+**Already linked before this pass:** Overview + Unit Type Matrix tabs opened unit type modal.
+
+---
+
 ## Session: Jun 20, 2026 — Morgan Hill enrichment campaign + RITA outlier scan
 
 **Pilot:** `MH-REGISTRY-ENRICH-001` for property `a30d446c-ee4a-4fe0-a76e-e4f9bed0e3b0`.
