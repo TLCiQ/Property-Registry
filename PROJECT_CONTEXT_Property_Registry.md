@@ -2,6 +2,20 @@
 
 **Last updated:** Jul 4, 2026
 
+## Session: Jul 4, 2026 — Expandable image lightbox (dale-chat)
+
+**User request:** Cropped/thumbnail registry images should click-to-expand into a full-image modal across the platform.
+
+**Implementation (dale-chat):**
+- New shared components: `app/components/ImageLightbox.tsx` (modal: Escape, backdrop close, optional caption) and `app/components/ExpandableImage.tsx` (wraps cropped display → opens lightbox with full Cloudinary URL).
+- Helper: `cloudinaryOriginalUrl()` in `lib/registry-images.ts` strips transforms for full-resolution preview.
+- Wired at component level: `RegistryImageGallery` (hero, logo, gallery cards), `RegistryLogoBox`, property listing cards + slide-out hero (`property-registry/page.tsx`), facility/stakeholder detail heroes, property enrich review context images.
+- Refactored: `HeadshotLightbox` and `MyListsPanel` SKU preview now use `ImageLightbox`.
+
+**Intentionally skipped:** Floor-plan / shop-drawing / unit-layout thumbnails that already open `AssetPreviewModal` (PDF + preview); unit-type layout thumbs that navigate to detail; headshot avatars (team/contact/cascade) which already had or don't need crop expansion; RITA enrich preview grid (admin selection UX).
+
+---
+
 ## Session: Jul 4, 2026 — Troubadour Lubbock 25198 Main Order (full enrichment)
 
 **Target:** `25198- Lubbock, TX - Troubador 14th St. Main Order` — BSI Sanyang factory Main Order on Parallel **Troubadour** student housing at 2413 14th St, Lubbock TX 79401 (same site as BSI job **25019** / NetSuite job 9271).
