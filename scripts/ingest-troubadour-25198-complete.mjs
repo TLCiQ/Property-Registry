@@ -227,6 +227,8 @@ async function main() {
       unit_count: t.unit_count,
       beds_per_unit: t.beds_per_unit,
       standard_bedrooms: t.standard_bedrooms,
+      bathrooms: t.bathrooms ?? 0,
+      half_baths: 0,
       divider_bedrooms: 0,
       shared_bedrooms: 0,
       pod_bedrooms: 0,

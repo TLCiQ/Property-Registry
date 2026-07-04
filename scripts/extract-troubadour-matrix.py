@@ -69,6 +69,7 @@ def main() -> None:
 
     units = []
     type_counts: Counter[str] = Counter()
+    type_bath_counts: dict[str, set[int]] = defaultdict(set)
     drawing_counts: Counter[str] = Counter()
 
     for row in ws.iter_rows(min_row=4, values_only=True):
@@ -98,10 +99,24 @@ def main() -> None:
             if val:
                 drawings[label] = str(val).strip()
 
+        bath_count = sum(
+            1
+            for label in (
+                "BATH TOP SD",
+                "BATH 2 TOP SD",
+                "BATH 3 TOP SD2",
+                "BATH 4 TOP SD3",
+                "BATH 5 TOP SD4",
+            )
+            if drawings.get(label)
+        )
+
         if kitchen_cab:
             drawing_counts[kitchen_cab] += 1
         if unit_type:
             type_counts[unit_type] += 1
+            if bath_count:
+                type_bath_counts[unit_type].add(bath_count)
 
         units.append(
             {
@@ -117,13 +132,19 @@ def main() -> None:
         )
 
     unit_types = []
+    inconsistent_bath: dict[str, list[int]] = {}
     for name, count in sorted(type_counts.items(), key=lambda x: (-x[1], x[0])):
+        baths = sorted(type_bath_counts.get(name, set()))
+        bathroom_count = max(baths) if baths else 0
+        if len(baths) > 1:
+            inconsistent_bath[name] = baths
         unit_types.append(
             {
                 "unit_type_name": name,
                 "unit_count": count,
                 "beds_per_unit": infer_beds(name),
                 "standard_bedrooms": infer_beds(name),
+                "bathrooms": bathroom_count,
             }
         )
 
@@ -135,6 +156,7 @@ def main() -> None:
         "kitchen_cab_variants": len(drawing_counts),
         "units": units,
         "unit_types": unit_types,
+        "type_bath_inconsistent": inconsistent_bath,
         "kitchen_cab_counts": dict(drawing_counts.most_common()),
     }
 
