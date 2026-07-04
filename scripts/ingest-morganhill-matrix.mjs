@@ -24,7 +24,7 @@ for (const f of ['.env.local', '.env']) {
 const DRY = !process.argv.includes('--apply');
 const PID = 'a30d446c-ee4a-4fe0-a76e-e4f9bed0e3b0';
 const MAP_JSON = resolve(__dirname, '..', '.firecrawl', 'mh-matrix-drawings.json');
-const CABINET_GAP = new Set(['MW04.5', 'MW05', 'MW06']);
+const CABINET_GAP = new Set([]); // MW04.5/MW05/MW06 MTO PDFs ingested separately
 
 const regUrl = process.env.REGISTRY_IQ_SUPABASE_URL;
 const regKey = process.env.REGISTRY_IQ_SUPABASE_SERVICE_ROLE_KEY;
@@ -47,15 +47,25 @@ async function uploadPdf(localPath, publicId) {
 }
 
 function linkShopDrawing(shopByNo, drawingNo) {
-  if (!drawingNo || CABINET_GAP.has(drawingNo)) return null;
-  const row = shopByNo.get(drawingNo);
-  if (!row) return { drawing_no: drawingNo, thumbnail_url: null, pdf_url: null, gap: 'not_in_shop_drawings' };
+  const resolved = resolveDrawingNo(drawingNo);
+  if (!resolved || CABINET_GAP.has(resolved)) return null;
+  const row = shopByNo.get(resolved);
+  if (!row) return { drawing_no: drawingNo, resolved_drawing_no: resolved, thumbnail_url: null, pdf_url: null, gap: 'not_in_shop_drawings' };
   return {
-    drawing_no: row.drawing_no,
+    drawing_no: drawingNo,
+    resolved_drawing_no: resolved !== drawingNo ? resolved : undefined,
     thumbnail_url: row.thumbnail_url,
     pdf_url: row.pdf_url,
     page_count: row.page_count,
   };
+}
+
+function resolveDrawingNo(drawingNo) {
+  if (!drawingNo) return drawingNo;
+  if (drawingNo === 'MW01.5' || drawingNo === 'MW01.6') return 'MW01';
+  const dot = String(drawingNo).match(/^(MW\d+)\.\d+$/);
+  if (dot) return dot[1];
+  return drawingNo;
 }
 
 async function main() {
@@ -149,22 +159,27 @@ async function main() {
       gaps.layout.push(typeName);
     }
 
-    const mw = spec.kitchen_drawing_no;
-    if (mw && !CABINET_GAP.has(mw)) {
-      const k = linkShopDrawing(shopByNo, mw);
-      if (k?.pdf_url) {
-        roomDrawings.kitchen = {
-          ...k,
-          source_ref: spec.kitchen_cab_raw,
-          note: 'Cabinet shop drawing is labeled with a representative unit type; Matrix Kitchen Cab code is authoritative for this Unit Type - GC.',
-        };
-        kitchenOk++;
-      } else if (k) {
-        roomDrawings.kitchen = { drawing_no: mw, source_ref: spec.kitchen_cab_raw, thumbnail_url: null, pdf_url: null };
-        gaps.kitchen.push(typeName);
-      }
-    } else if (mw && CABINET_GAP.has(mw)) {
-      gaps.kitchen.push(`${typeName}:${mw}`);
+    const variants = spec.kitchen_variants || (spec.kitchen_drawing_no
+      ? [{ kitchen_cab_raw: spec.kitchen_cab_raw, kitchen_drawing_no: spec.kitchen_drawing_no }]
+      : []);
+    const kitchenVariants = [];
+    for (const kv of variants) {
+      const drawingNo = kv.kitchen_drawing_no;
+      if (!drawingNo) continue;
+      const k = linkShopDrawing(shopByNo, drawingNo);
+      kitchenVariants.push({
+        kitchen_cab: kv.kitchen_cab_raw,
+        drawing_no: drawingNo,
+        ...(k || { thumbnail_url: null, pdf_url: null }),
+        source_ref: kv.kitchen_cab_raw,
+      });
+      if (k?.pdf_url) kitchenOk++;
+      else gaps.kitchen.push(`${typeName}:${drawingNo}`);
+    }
+    if (kitchenVariants.length === 1 && kitchenVariants[0].pdf_url) {
+      roomDrawings.kitchen = { ...kitchenVariants[0], note: 'Single kitchen cab variant for this unit type.' };
+    } else if (kitchenVariants.length > 0) {
+      roomDrawings.kitchen_variants = kitchenVariants;
     }
 
     if (spec.vanity_1) {
@@ -179,7 +194,7 @@ async function main() {
     }
 
     if (DRY) {
-      console.log(`  [DRY] ${typeName} page=${pageNum} kitchen=${mw || '—'} baths=${spec.vanity_1?.label || '—'}`);
+      console.log(`  [DRY] ${typeName} page=${pageNum} kitchen_variants=${variants.length} baths=${spec.vanity_1?.label || '—'}`);
       continue;
     }
 

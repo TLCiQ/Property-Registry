@@ -20,7 +20,7 @@ XLSX = BOX / "Morgan Hill Matrix NEW.xlsx"
 OUT_JSON = ROOT / ".firecrawl" / "mh-matrix-drawings.json"
 OUT_PAGES = ROOT / ".firecrawl" / "mh-unit-plan-pages"
 OUT_CROPS = ROOT / ".firecrawl" / "mh-unit-plan-crops"
-CABINET_GAP = {"MW04.5", "MW05", "MW06"}
+CABINET_GAP = set()  # MW04.5/MW05/MW06 now have MTO PDFs at Box root (2026-06)
 
 UNIT_PAT = re.compile(
     r"UNIT\s+([AB]\d+\.\d+[A-Z])(?:\s+ANSI(?:\s*TYPE)?\s*A|\s+ANSIA)?\s+(?:FLOOR\s+)?PLAN",
@@ -107,6 +107,19 @@ def parse_matrix() -> tuple[set[str], dict]:
         if row[16]:
             by_v2[ut].append(str(row[16]).strip())
     return matrix_types, {"kc": by_kc, "v1": by_v1, "v2": by_v2}
+
+
+def unique_kitchen_variants(codes: list[str]) -> list[dict]:
+    """All distinct kitchen cab codes for a unit type (actuals — no mode vote)."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    for raw in codes:
+        if not raw or raw in seen:
+            continue
+        seen.add(raw)
+        mw = mw_base(raw)
+        out.append({"kitchen_cab_raw": raw, "kitchen_drawing_no": mw})
+    return out
 
 
 def _median(vals: list[float], default: float) -> float:
@@ -244,7 +257,9 @@ def main() -> None:
     }
 
     for ut in sorted(matrix_types):
-        kc_raw, mw = canonical_kitchen(cols["kc"][ut])
+        kc_variants = unique_kitchen_variants(cols["kc"][ut])
+        kc_raw = kc_variants[0]["kitchen_cab_raw"] if len(kc_variants) == 1 else None
+        mw = kc_variants[0]["kitchen_drawing_no"] if len(kc_variants) == 1 else None
         v1 = parse_vanity(mode(cols["v1"][ut]) if cols["v1"][ut] else None)
         v2 = parse_vanity(mode(cols["v2"][ut]) if cols["v2"][ut] else None)
         page = page_of.get(ut)
@@ -255,13 +270,15 @@ def main() -> None:
             "layout_crop_pdf": crop,
             "kitchen_cab_raw": kc_raw,
             "kitchen_drawing_no": mw,
+            "kitchen_variants": kc_variants,
             "vanity_1": v1,
             "vanity_2": v2,
         }
         if not page:
             out["gaps"]["layout"].append(ut)
-        if mw in CABINET_GAP:
-            out["gaps"]["kitchen_pdf"].append(ut)
+        for kv in kc_variants:
+            if kv["kitchen_drawing_no"] in {"MW04.5", "MW05", "MW06"} and not kv["kitchen_drawing_no"]:
+                out["gaps"]["kitchen_pdf"].append(ut)
 
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     OUT_JSON.write_text(json.dumps(out, indent=2))

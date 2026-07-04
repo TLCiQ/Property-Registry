@@ -8,8 +8,7 @@
  * - Shop drawings: cabinet config PDFs (KM PDFs/MWxx.pdf) + interior-elevation sheets (A70x).
  *   Inserts/updates property_shop_drawings. unit_type_code left null (M:N rollups deferred).
  *
- * NO SURROGATES: cabinet configs referenced by the Matrix but lacking a PDF (MW04.5/MW05/MW06)
- * are skipped and recorded in the gap report.
+ * NO SURROGATES: missing source files are skipped and recorded in the gap report.
  *
  * Usage: node scripts/ingest-morganhill-assets.mjs --dry-run | --apply
  */
@@ -41,7 +40,19 @@ function configureCloudinary() {
 }
 
 const CABINET_BASE = ['MW01','MW02','MW03','MW04','MW07','MW07.5','MW08','MW09','MW10','MW11','MW12','MW13','MW14','MW15','MW16','MW17','MW18'];
-const CABINET_GAP = ['MW04.5','MW05','MW06']; // referenced by Matrix, no PDF
+const CABINET_GAP = []; // MW04.5/MW05/MW06 MTO PDFs at Box root (ingested separately)
+const EXTRA_DRAWINGS = [
+  { drawing_no: 'MW04.5', file: `${BOX}/MW04.5 Carrolton TX - Morgan Hill - DRAWING SET - 6.03.26_MTO NOTES-2.pdf`, type: 'kitchen_cabs', title: 'Cabinet config MW04.5 (MTO)' },
+  { drawing_no: 'MW05', file: `${BOX}/MW05_Carrolton TX - Morgan Hill - DRAWING SET - 6.03.26_MTO NOTES-3.pdf`, type: 'kitchen_cabs', title: 'Cabinet config MW05 (MTO)' },
+  { drawing_no: 'MW06', file: `${BOX}/MW06 Carrolton TX - Morgan Hill - DRAWING SET - 6.03.26_MTO NOTES-4.pdf`, type: 'kitchen_cabs', title: 'Cabinet config MW06 (MTO)' },
+  { drawing_no: 'INSTALL-SET', file: `${BOX}/Cabinets/Carrolton, TX - Morgan Hill - DRAWING SET - 4.06.26_FOR INSTALL.pdf`, type: 'kitchen_cabs', title: 'Consolidated cabinet install drawing set' },
+  { drawing_no: '0-A002', file: `${BOX}/DRAWING SET/Drawings & Specs/0-A002_SITE PLAN_TURN SEQ..pdf`, type: 'site_plan', title: 'Site plan — turn sequence' },
+];
+const CUT_SHEETS = [
+  { drawing_no: 'LG-LSEL6330SE', file: `${BOX}/Cut Sheets/LSEL6330SE LG Builder Spec Sheet.pdf`, type: 'appliance', title: 'LG LSEL6330SE range spec' },
+  { drawing_no: 'LG-MVEM1621Y', file: `${BOX}/Cut Sheets/MVEM1621Y LG Pro Builder Spec Sheet.pdf`, type: 'appliance', title: 'LG MVEM1621Y microwave spec' },
+  { drawing_no: 'LG-BUILDER', file: `${BOX}/Cut Sheets/LG-Builder-Spec Sheet.pdf`, type: 'appliance', title: 'LG builder spec sheet' },
+];
 const ELEVATIONS = [
   { sheet: 'A701', file: 'A701 - TYPICAL UNIT INTERIOR ELEVATIONS AND DETAILS.pdf', type: 'kitchen_cabs' },
   { sheet: 'A702', file: 'A702 - TYPICAL ANSI TYPE A UNIT INTERIOR ELEVATIONS AND DETAILS.pdf', type: 'kitchen_cabs' },
@@ -75,6 +86,9 @@ async function main() {
   }
   for (const e of ELEVATIONS) {
     drawings.push({ drawing_no: e.sheet, file: `${BOX}/DRAWING SET/${e.file}`, type: e.type, title: e.file.replace(/\.pdf$/, '') });
+  }
+  for (const d of [...EXTRA_DRAWINGS, ...CUT_SHEETS]) {
+    drawings.push(d);
   }
 
   console.log(`Shop drawings (${DRY ? 'DRY' : 'APPLY'}): ${drawings.length} | cabinet gaps: ${CABINET_GAP.join(', ')}`);

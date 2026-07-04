@@ -2,6 +2,82 @@
 
 **Last updated:** Jun 27, 2026
 
+## Session: Jun 27, 2026 — Portfolio project team enrichment (PT-01)
+
+**Operators:** 908 Development, Lincoln Ventures, Subtext, Yugo, Parallel, American Campus Communities (ACC), Greystar.
+
+**Script:** `scripts/enrich-portfolio-project-team.mjs`  
+**Curated map:** `scripts/data/portfolio-project-team-curated.mjs`  
+**Report:** `.firecrawl/portfolio-project-team-report.json`
+
+**Scope:** **280** properties matched (full 2,240-row registry paginated fetch; initial run only saw first 1,000 rows).
+
+**Actions:**
+- Removed **171** incorrect stakeholder links where developers/operators were tagged as `gc`
+- **154** property records updated with verified GC/architect/designer + `portfolio_project_team` provenance
+- Created/linked stakeholders; **40** firms web-enriched via Firecrawl
+
+**Verified spot-checks:** VERVE Fayetteville (Brinkmann / Modus Studio / Vida Design), Rambler Tempe (Layton / Shepley Bulfinch / Variant Collaborative), Rambler Athens (Rabren / Niles Bolton / Krywicki), 250 Church (Rogers-O'Brien / Rhode Partners), The Marshall (Kraus-Anderson / BKV Group), West University Gainesville (ARCO Murray / Forum Architecture), MX-006 Verve Knoxville (Brinkmann / Dynamik Design).
+
+**Known gaps (PT-02):** ACC and many Greystar assets are acquisitions/renos without published construction teams; Yugo-operated properties need per-asset GSA development GC research (GSA is owner/developer, not GC).
+
+```bash
+cd "/Users/geoffreyjackson/Dropbox/The Living Company/TLC iQ/Property_Registry"
+node scripts/enrich-portfolio-project-team.mjs --apply --enrich-stakeholders
+node scripts/enrich-portfolio-project-team.mjs --apply --operators=acc,greystar
+```
+
+---
+
+## Session: Jun 27, 2026 — Core Spaces project team enrichment (CS-09)
+
+**Goal:** For all 89 Prismic-linked Core Spaces communities, research and record **general contractor**, **architect**, and **interior designer** on `property_registry` and link canonical stakeholders.
+
+**Script:** `scripts/enrich-corespaces-project-team.mjs`  
+**Curated map:** `scripts/data/corespaces-project-team-curated.mjs` (property-specific + brand defaults for Hub, ōLiv, Oxenfree, State, Rive, Collective, Heritage)  
+**Report:** `.firecrawl/cs-project-team-report.json`
+
+**Sources (priority):** curated public research → Layout-iQ Property List (Airtable) → existing `property_stakeholders` (excluding Core Spaces as GC) → brand defaults (e.g. DLR Group for Hub architect when no project-specific name).
+
+**Applied results (Registry-iQ `xhafhdaugmgdxckhdfov`):**
+| Field | Coverage |
+|-------|----------|
+| `architect_name` | **85 / 89** |
+| `designer_name` | **55 / 89** |
+| `gc_name` | **36 / 89** |
+| Bogus Core Spaces GC links removed | **31** |
+| New `stakeholder_registry` rows | **12+** |
+| `property_stakeholders` team links | **~296** total (gc/architect/interior_designer) |
+
+**Web stakeholder profiles:** Firecrawl search + heuristic extraction (Anthropic API returned 404 for all models in this env — regex fallback used). **19 firms** enriched with website, description, LinkedIn, logo where found. HQ address parsing works for some (Treehouse Addison TX in description); multi-office firms (Antunovich) store primary website + description with office list.
+
+**Verified spot-checks:** Hub Raleigh (Power / Antunovich / Harken), ōLiv Madison (Treehouse / Antunovich / Studio K), The Canyon (Fiore / Antunovich / Studio K), Hub Knoxville (Juneau / Antunovich / Parini).
+
+**Still missing architect (4):** HillTop, Stanhope, Union Auburn, Villas on 24th — no brand mapping; need manual research.  
+**GC gap (53):** Many sold/legacy Hub communities lack verifiable GC in public sources; do not guess — tracked as CS-10.
+
+**Usage:**
+```bash
+cd "/Users/geoffreyjackson/Dropbox/The Living Company/TLC iQ/Property_Registry"
+node scripts/enrich-corespaces-project-team.mjs --dry-run
+node scripts/enrich-corespaces-project-team.mjs --apply
+node scripts/enrich-corespaces-project-team.mjs --apply --enrich-stakeholders
+```
+
+---
+
+## Session: Jun 27, 2026 — Core Spaces gallery image fix (CS-08)
+
+**Root cause (runtime-verified):**
+1. **13/89 Prismic communities** (incl. Hub Atlanta) never received `prismic_id` / images — ingest `--apply` had not been re-run after matcher improvements; city/name drift blocked some (ōLiv unicode, `Unknown` Prismic cities, embedded city strings like `Tampa, FL 33613`).
+2. **76 linked rows** stored Prismic-shaped `images[]` (`{url, alt, dimensions}`) **without `role`** — `RegistryImageGallery` groups by category role, so gallery sections rendered empty even when data existed in DB.
+
+**Fix:**
+- `scripts/ingest-corespaces-prismic.mjs`: smarter matching (`name+state`, parsed city strings), `toRegistryImages()` writes canonical `{ id, url, role: hero|exterior, … }`.
+- Re-ran `node scripts/ingest-corespaces-prismic.mjs --apply` → **89/89 linked**, all with role-tagged gallery.
+- `scripts/backfill-images-to-cloudinary.mjs --gallery` added; initial run hit transient `ENOTFOUND api.cloudinary.com` — only 1/89 gallery rows Cloudinary-hosted; **Prismic CDN URLs still display in UI** until backfill re-run.
+- Audit: `scripts/audit-corespaces-images.mjs` (pre-fix: 13 missing link, 76 missing role → post-fix: 0/0).
+
 ## Session: Jun 27, 2026 — Core Spaces follow-ups CS-02 through CS-05
 
 **Completed all four recommended next steps from May 20 ingest:**
@@ -127,6 +203,16 @@ Plan: `~/.cursor/plans/morgan_hill_layouts_drawings_7e73dd7e.plan.md`. Premise: 
 - **RITA relocation:** the two persistent RITA surfaces (Proposals panel + Reads history) moved from the top of the tab content to the **bottom of the page**. The three transient run-status banners (no-results prompt, staged-run banner, findings review) were left near the RITA action button (they appear only during/after an active run).
 
 **Validation:** `npm run build` (dale-chat) green; property route compiles. DB spot-checks: 23 shop drawings, 11 floor plans (thumbnail 200), 86 unit types / 390 units / 480 baths.
+
+**SKU bridge (Jun 22, corrected):** Counts Workbook kitchen BOMs live in DALE-Demand `millwork_mw_package_sku` (2,674 rows). Bridge scripts `extract-mh-bom-keys.py` + `ingest-morganhill-skus.mjs` join Matrix per-unit `Kitchen Cab` + `Thus/Opp` → DALE BOM → **`property_unit_type_skus`** (`source=morgan_hill_counts_workbook`). **Actuals only — no attribute assignment or majority vote.** Applied: **6,833 SKU lines / 184 distinct SKUs / 390/390 units covered**.
+
+**Full populate (Jul 4):** `ingest-morganhill-complete.mjs` orchestrates Box → Cloudinary → Registry for all remaining gaps:
+- **`property_units.metadata`** — all 390 Matrix rows (kitchen cab, THUS/OPP, elevations, soffit, scheme, area/truck/phase)
+- **`property_unit_types.total_sqft`** — 86/86 from UNIT PLANS net SF; property rollup **342,682 net sf** in `external_ids.morgan_hill_net_sqft_total`
+- **Shop drawings** — 34 total: MW04.5/MW05/MW06 MTO PDFs, consolidated INSTALL-SET, site plan `0-A002`, 3 LG appliance cut sheets; MW01.5/01.6 link to MW01 drawing
+- **`room_drawings.kitchen_variants`** — 11 multi-cab types + 75 single-variant types; zero kitchen link gaps
+- **Property images** — site plan + appliance cut sheets merged into `property_registry.images`
+- **Scripts added:** `extract-mh-unit-facts.py`, `extract-mh-unit-sqft.py`, `ingest-morganhill-unit-facts.mjs`, `ingest-morganhill-complete.mjs`, `migration-property-units-matrix-metadata.sql`
 
 ---
 
@@ -421,7 +507,7 @@ Tracing `iqid_apply_merge` revealed that the answer was "**R wins absolutely** �
 
 User: "rather than just rename can we open all fields to edit?"
 
-Decision after scoping discussion: **Option A** — edit the ~10-20 fields per entity that actually drive a merge decision, not the full 20-50 column schema. The dedupe-relevant fields are: name, address, city/state/postal, brand/type, status/active, external_ids, plus user-requested additions `total_units`, `total_beds`, `opening_year` (the "year opened" column on property_registry), and `property_url` / `leasing_url`. For everything else, an "Open full record →" link on each side header opens the canonical detail page in a new tab.
+Decision after scoping discussion: **Option A** — edit the ~10-20 fields per entity that actually drive a merge decision, not the full 20-50 column schema. The dedupe-relevant fields are: name, address, city/state/postal, brand/type, status/active, external_ids, plus user-requested additions `total_units`, `total_beds`, `opening_year` (the "year opened" column on property_registry), and `property_url`. For everything else, an "Open full record →" link on each side header opens the canonical detail page in a new tab.
 
 Implementation:
 - `dale-chat/lib/registry-edit.ts` — per-entity FieldSpec allowlist + `coerceFieldValue` (text/longtext/integer/boolean/jsonb), `fullRecordUrl(entity, id)` (falls back to list page for vendor/facility which don't have detail pages yet).
@@ -1565,7 +1651,7 @@ The behavioral profile is designed as a practical business intelligence tool, no
 
 ### Pipeline
 1. **Firecrawl search** — searches for property by name + city + state, returns up to 5 results
-2. **Firecrawl scrape** — scrapes up to 6 pages total (direct URL from `property_url`/`leasing_url` if available + top 5 search results)
+2. **Firecrawl scrape** — scrapes up to 6 pages total (direct URL from `property_url` if available + top 5 search results)
 3. **Claude analysis** — extracts structured property data from all scraped content (claude-sonnet-4-20250514)
 4. **Smart diff** — compares RITA findings against existing data; only fills empty/null/placeholder fields ("Unknown", "TBD", 0) — never overwrites real data
 5. **Cloudinary image upload** — if RITA finds a hero image, uploads to Cloudinary (`property-registry/hero_{id}`) with auto-optimization (1600px max, auto format/quality) for permanent, fast-loading URLs
@@ -1716,3 +1802,33 @@ New bed-count roll-up columns on parent tables: `property_floors.total_beds_on_f
 - **SYNC-iQ dash:** Enrich-iQ `/sync/registry-enrich` — cross-property table + KPI cards; nav under Outbound; home page tile links to monitor. Reads Registry-iQ directly.
 - **Live state (verified earlier):** `MH-REGISTRY-ENRICH-001` sent to `gjackson@livingcompany.com`, review pending (not opened), 9 items, 0 files.
 - **Remaining:** Deploy dale-chat + Enrich-iQ to prod so monitors are visible without Supabase SQL.
+
+---
+
+## Session log — Jun 28, 2026 (IMG-01 website images → Cloudinary)
+
+**Goal:** All CS-09 + PT-01 enriched properties (~304) should have hero images, floor plans, unit/furniture photos on Cloudinary.
+
+**New scripts:**
+- `scripts/lib/property-image-ingest.mjs` — shared Cloudinary upload, URL classification (`hero`, `exterior`, `floorplan`, `unit_layout`, `units`, `common_amenity`), enriched-property filters, Firecrawl gallery paths.
+- `scripts/enrich-property-website-images.mjs` — Firecrawl scrape leasing sites → classify → Cloudinary → merge `property_registry.images[]` + `hero_image_url`. Usage: `--apply --limit=50`, `--property-id=`, `--force`.
+
+**Backfill extension:** `backfill-images-to-cloudinary.mjs --source=enriched` filter added; CS Prismic gallery re-run: `--apply --source=corespaces_prismic --gallery`.
+
+**Verified spot-check:** RAMBLER TEMPE — 25 images (hero, floorplan, amenities, exteriors) uploaded to `property-registry/{id}/`.
+
+**Batch runs (Jun 28):** CS gallery backfill (88 candidates); website ingest 6×50 batches in `.firecrawl/website-images-all.log`. Properties without `property_url` use Firecrawl search; architect/GC URLs blocklisted from mistaken `property_url` values.
+
+**Coverage after 6×50 batch (Jun 28):** 135/304 heroes on Cloudinary; 3,554 gallery images; 132 properties website-ingested; 72 with floor plans; 47 with unit/furniture photos; 88/88 CS Prismic galleries migrated. **213** still flagged `needsImageWork` (mostly missing leasing URLs or floorplan/unit roles).
+
+**Gaps:** Many enriched properties lack `property_url`; ACC/Greystar often need full americancampus.com paths; Instagram CDN blocked; Yugo brand root pages need full property path in `property_url`.
+
+---
+
+## Session log — Jun 28, 2026 (drop leasing_url)
+
+**Decision:** Remove `leasing_url` — only 14/2,240 rows populated; 0 rows had leasing_url without property_url. Single canonical field: `property_url`.
+
+**Migration:** `migrations/002_drop_leasing_url.sql` — copies existing values to `external_ids.legacy_leasing_url`, drops column.
+
+**Code:** Removed from dale-chat API/UI/RITA prompts, Property_Registry scripts (`property-image-ingest`, enrich routes, rita-enrich-batch, migrate-to-registry-iq).
