@@ -209,7 +209,6 @@ CREATE TABLE property_registry (
   property_phone TEXT,
   property_email TEXT,
   property_url TEXT,
-  leasing_url TEXT,
   opening_date DATE,
   construction_start_date DATE,
   construction_completion_date DATE,

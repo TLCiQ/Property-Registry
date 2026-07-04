@@ -166,7 +166,7 @@ const FILLABLE_FIELDS = [
   'postal_code', 'latitude', 'longitude', 'total_units', 'total_beds',
   'year_built', 'opening_date', 'owner_name', 'developer_name', 'brand_name',
   'property_manager_name', 'property_phone', 'property_email', 'property_url',
-  'leasing_url', 'hero_image_url',
+  'hero_image_url',
 ];
 
 const EMPTY_VALUES = [null, '', 'Unknown', 'TBD', 'unknown', 'tbd', 0, undefined];

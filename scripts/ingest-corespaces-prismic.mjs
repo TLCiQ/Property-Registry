@@ -22,6 +22,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { randomUUID } from 'crypto';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -108,6 +109,68 @@ function normalizeForMatch(raw) {
     .replace(/[^A-Z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function extractMatchParts(name, city, stateProvince) {
+  let c = String(city || '').trim();
+  let s = String(stateProvince || '').trim().toUpperCase();
+  const comma = c.match(/^([^,]+),\s*([A-Z]{2})\b/i);
+  if (comma) {
+    c = comma[1].trim();
+    if (s.length !== 2 || s === 'UNKNOWN') s = comma[2].toUpperCase();
+  }
+  const cityNorm = !c || /^unknown$|^tbd$/i.test(c) ? null : normalizeForMatch(c);
+  const stateNorm = s.length === 2 && s !== 'UNKNOWN' ? s : null;
+  return {
+    nameNorm: normalizeForMatch(name),
+    cityNorm,
+    stateNorm,
+    exact: `${(name || '').trim().toLowerCase()}|${String(city || '').trim().toLowerCase()}|${s}`,
+  };
+}
+
+function toRegistryImages(incomingImages) {
+  if (!incomingImages?.length) return [];
+  return incomingImages.map((img, idx) => {
+    const dims = img.dimensions || {};
+    return {
+      id: randomUUID(),
+      url: img.url,
+      public_id: '',
+      label: img.alt || (idx === 0 ? 'Hero' : `Exterior ${idx}`),
+      role: idx === 0 ? 'hero' : 'exterior',
+      focal_x: 0.5,
+      focal_y: 0.5,
+      zoom: 1,
+      width: dims.width || 0,
+      height: dims.height || 0,
+      format: 'jpg',
+      bytes: 0,
+      uploaded_at: new Date().toISOString(),
+    };
+  });
+}
+
+function findExistingRow(incoming, indexes) {
+  const { byPrismic, byExact, byFull, byNameState } = indexes;
+  let row = byPrismic.get(incoming.prismic_id);
+  if (row) return { row, via: 'prismic_id' };
+
+  const parts = extractMatchParts(incoming.property_name, incoming.city, incoming.state_province);
+  row = byExact.get(parts.exact);
+  if (row) return { row, via: 'exact' };
+
+  if (parts.cityNorm && parts.stateNorm) {
+    row = byFull.get(`${parts.nameNorm}|${parts.cityNorm}|${parts.stateNorm}`);
+    if (row) return { row, via: 'norm_full' };
+  }
+
+  if (parts.stateNorm) {
+    row = byNameState.get(`${parts.nameNorm}|${parts.stateNorm}`);
+    if (row) return { row, via: 'name_state' };
+  }
+
+  return { row: null, via: 'none' };
 }
 
 function mapPropertyStatus({ isComingSoon, isOwnedByCore, year }) {
@@ -246,6 +309,10 @@ function buildUpdate(existing, incoming) {
   if (incoming.university_name) patch.university_name = incoming.university_name;
   if (incoming.hero_image_url) patch.hero_image_url = incoming.hero_image_url;
 
+  if (incoming.images?.length) {
+    patch.images = toRegistryImages(incoming.images);
+  }
+
   const ext = { ...(existing.external_ids || {}) };
   ext.prismic_id = incoming.prismic_id;
   if (incoming.prismic_uid) ext.corespaces_uid = incoming.prismic_uid;
@@ -269,10 +336,6 @@ function buildUpdate(existing, incoming) {
     sourceEntry.note = 'Developed by Core Spaces; no longer owned — assign current owner/PM via press releases';
   }
   patch.enrichment_sources = [...prevSources.filter((s) => s.type !== 'corespaces_prismic'), sourceEntry];
-
-  if (incoming.images?.length) {
-    patch.images = incoming.images;
-  }
 
   if (incoming.highlights?.length) {
     const noteLines = incoming.highlights.slice(0, 5).join('; ');
@@ -330,7 +393,7 @@ function buildInsert(incoming) {
     total_units: incoming.total_units,
     total_beds: incoming.total_beds,
     hero_image_url: incoming.hero_image_url,
-    images: incoming.images || [],
+    images: toRegistryImages(incoming.images || []),
     external_ids: ext,
     enrichment_sources,
     source: 'corespaces_prismic',
@@ -390,16 +453,24 @@ async function main() {
   console.log(`  Registry rows loaded for matching: ${existingRows.length}`);
 
   const byPrismic = new Map();
-  const byMatch = new Map();
   const byExact = new Map();
+  const byFull = new Map();
+  const byNameState = new Map();
   for (const row of existingRows || []) {
     const pid = row.external_ids?.prismic_id;
     if (pid) byPrismic.set(pid, row);
-    const key = `${normalizeForMatch(row.property_name)}|${normalizeForMatch(row.city)}|${(row.state_province || '').toUpperCase()}`;
-    if (!byMatch.has(key)) byMatch.set(key, row);
-    const exact = `${(row.property_name || '').trim().toLowerCase()}|${(row.city || '').trim().toLowerCase()}|${(row.state_province || '').toUpperCase()}`;
-    if (!byExact.has(exact)) byExact.set(exact, row);
+    const parts = extractMatchParts(row.property_name, row.city, row.state_province);
+    if (!byExact.has(parts.exact)) byExact.set(parts.exact, row);
+    if (parts.cityNorm && parts.stateNorm) {
+      const key = `${parts.nameNorm}|${parts.cityNorm}|${parts.stateNorm}`;
+      if (!byFull.has(key)) byFull.set(key, row);
+    }
+    if (parts.stateNorm) {
+      const key = `${parts.nameNorm}|${parts.stateNorm}`;
+      if (!byNameState.has(key)) byNameState.set(key, row);
+    }
   }
+  const indexes = { byPrismic, byExact, byFull, byNameState };
 
   const { data: coreStake } = await sb
     .from('stakeholder_registry')
@@ -409,15 +480,7 @@ async function main() {
     .maybeSingle();
 
   for (const incoming of portfolio) {
-    let existing = byPrismic.get(incoming.prismic_id);
-    if (!existing) {
-      const exact = `${(incoming.property_name || '').trim().toLowerCase()}|${(incoming.city || '').trim().toLowerCase()}|${(incoming.state_province || '').toUpperCase()}`;
-      existing = byExact.get(exact);
-    }
-    if (!existing) {
-      const key = `${normalizeForMatch(incoming.property_name)}|${normalizeForMatch(incoming.city)}|${(incoming.state_province || '').toUpperCase()}`;
-      existing = byMatch.get(key);
-    }
+    const { row: existing } = findExistingRow(incoming, indexes);
 
     async function applyUpdate(existingRow) {
       stats.matched++;
@@ -459,8 +522,14 @@ async function main() {
     }
     const { data: inserted, error } = await sb.from('property_registry').insert(row).select('id').single();
     if (error?.code === '23505' || error?.message?.includes('unique constraint')) {
-      const exact = `${(incoming.property_name || '').trim().toLowerCase()}|${(incoming.city || '').trim().toLowerCase()}|${(incoming.state_province || '').toUpperCase()}`;
-      const dupe = byExact.get(exact);
+      const parts = extractMatchParts(incoming.property_name, incoming.city, incoming.state_province);
+      let dupe = byExact.get(parts.exact);
+      if (!dupe && parts.cityNorm && parts.stateNorm) {
+        dupe = byFull.get(`${parts.nameNorm}|${parts.cityNorm}|${parts.stateNorm}`);
+      }
+      if (!dupe && parts.stateNorm) {
+        dupe = byNameState.get(`${parts.nameNorm}|${parts.stateNorm}`);
+      }
       if (dupe) {
         console.log(`  [DUPE→UPDATE] ${incoming.property_name}`);
         await applyUpdate(dupe);
