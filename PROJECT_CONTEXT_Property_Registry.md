@@ -1,6 +1,101 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** Jun 27, 2026
+**Last updated:** Jul 4, 2026
+
+## Session: Jul 4, 2026 — Troubadour Lubbock 25198 Main Order (full enrichment)
+
+**Target:** `25198- Lubbock, TX - Troubador 14th St. Main Order` — BSI Sanyang factory Main Order on Parallel **Troubadour** student housing at 2413 14th St, Lubbock TX 79401 (same site as BSI job **25019** / NetSuite job 9271).
+
+**Property ID:** `095960e3-5b22-4a0c-9528-e3843fed3ede`  
+**Parent project 25019:** `65fa6c13-4596-464f-ae39-5979c0984317`  
+**Project 25198:** `bb23dbce-bf26-4c71-af4f-55e2c110db26`
+
+**Scripts:**
+- `scripts/extract-troubadour-matrix.py` → `.firecrawl/troubadour-matrix.json`
+- `scripts/ingest-troubadour-25198-complete.mjs --apply`
+
+**Applied (Registry-iQ verified):**
+| Grain | Count |
+|-------|------:|
+| Property units (Matrix) | **276/276** with `metadata` (kitchen cab, THUS/OPP, drawings, phase) |
+| Unit types | **23** |
+| Shop drawings (MW configs, Cloudinary) | **49** |
+| `project_registry` 25198 documents (Box index) | **6** |
+| Chain-iQ `container_loads` linked | **13/13** |
+| Parent 25019 documents + site address | enriched |
+
+**Property fixes:** cleaned address (was polluted with job-id strings), `total_units` 671→**276**, renamed **Troubadour — 14th Street SH**, developer **Parallel Group**, brand **Troubadour**, stakeholders unchanged (Teinert GC, Rhode architect).
+
+**Box root:** `25019-Lubbock, TX - 14th Street SH` (25198 has no separate folder; factory PO docs live under 25019 tree).
+
+**Admin:** https://tlciq-platform.vercel.app/property-registry/095960e3-5b22-4a0c-9528-e3843fed3ede
+
+### Phase 3 (Jul 4, same session)
+
+**Scripts:** `extract-troubadour-vanity-bom.py`, `ingest-troubadour-vanity-skus.mjs`, `load-troubadour-bom-to-dale.mjs`, `ingest-troubadour-phase3.mjs`
+
+| Grain | Count |
+|-------|------:|
+| Kitchen SKU rows (refined, vanity excluded) | **553** / 126 SKUs |
+| Vanity SKU rows (`troubadour_counts_workbook_vanity`) | **237** / 8 SKUs / 77 bath variants |
+| DALE `millwork_mw_package_sku` (Lubbock) | **592** rows |
+| NetSuite job **9271** on project 25019 | portfolio snapshot 2026-06-28 ($2.02M projected revenue) |
+
+**NetSuite finding:** **25198** and **25199** are Sanyang factory POs — no rows in `netsuite_jobs_portfolio`. `external_ids` now set `netsuite_record_type: factory_po`, `netsuite_parent_job_id: 9271`; misleading `netsuite_project_id` removed from factory orders.
+
+```bash
+python3 scripts/extract-troubadour-vanity-bom.py
+node scripts/ingest-troubadour-vanity-skus.mjs --apply
+node scripts/load-troubadour-bom-to-dale.mjs --apply
+node scripts/ingest-troubadour-phase3.mjs --apply
+```
+
+### Phase 4 — Website images (Jul 4, same session)
+
+**Script:** `scripts/ingest-troubadour-website-images.mjs` — Firecrawl scrape **livetroubadour.com** (home, amenities, floor-plans, gallery, virtual-tour) + Parallel dev page **parallel-co.com/troubadour-student-living** → Cloudinary → `property_registry`.
+
+**Sources:**
+- Leasing site: https://livetroubadour.com (403 on direct fetch; Firecrawl required)
+- Developer renders: https://www.parallel-co.com/troubadour-student-living
+
+**Applied (Registry-iQ verified Jul 4):**
+| Field | Value |
+|-------|-------|
+| `property_url` | https://livetroubadour.com |
+| `hero_image_url` | Cloudinary (street exterior from leasing site) |
+| `logo_image_url` | Cloudinary (Troubadour wordmark from Parallel page) |
+| `images[]` | **24** images |
+| Roles | hero **3**, common_amenity **10**, floorplan **2**, exterior **8**, units **1** |
+
+Report: `.firecrawl/troubadour-website-images-report.json`
+
+```bash
+node scripts/ingest-troubadour-website-images.mjs --apply
+```
+
+
+### Phase 2 (Jul 4, same session)
+
+**Scripts:** `extract-troubadour-bom.py`, `ingest-troubadour-skus.mjs`, `ingest-troubadour-phase2.mjs`
+
+| Grain | Count |
+|-------|------:|
+| Kitchen SKU rows (`troubadour_counts_workbook`) | **640** / 134 distinct SKUs |
+| Room-layout variants (type × THUS/OPP × kitchen_cab) | **29** |
+| Matrix units with BOM | **276/276** |
+| Project **25199** Overage | `135d526f-793f-4990-bc44-abe1ef72c3ff` |
+| Chain-iQ 25199 containers linked | **10/10** |
+| Teinert GC stakeholder rows | **7 → 1** (deduped) |
+
+```bash
+python3 scripts/extract-troubadour-bom.py
+node scripts/ingest-troubadour-skus.mjs --apply
+node scripts/ingest-troubadour-phase2.mjs --apply
+```
+
+---
+
+**Last updated (prior sections):** Jun 27, 2026
 
 ## Session: Jun 27, 2026 — Portfolio project team enrichment (PT-01)
 
