@@ -56,32 +56,90 @@ export async function findProjectManaging(token, projectFolderId) {
   return top.find((i) => i.type === 'folder' && /project managing/i.test(i.name));
 }
 
+function scoreContractPdf(name) {
+  const n = name.toLowerCase();
+  let score = 0;
+  if (/contract received/i.test(n)) score += 100;
+  if (/revised contract received/i.test(n)) score += 95;
+  if (/fully executed/i.test(n)) score += 80;
+  if (/subcontract agreement/i.test(n)) score += 60;
+  if (/master subcontractor agreement/i.test(n)) score += 40;
+  if (/\d{6,8}/.test(n)) score += 10;
+  if (/sample|old|template|checklist|coi|insurance|assignment/i.test(n)) score -= 50;
+  return score;
+}
+
+async function collectContractPdfs(token, projectFolderId) {
+  const pdfs = [];
+  async function walk(folderId, depth = 0) {
+    if (depth > 5) return;
+    for (const i of await listItems(token, folderId)) {
+      if (
+        i.type === 'file' &&
+        /\.pdf$/i.test(i.name) &&
+        (/contract received|revised contract received|fully executed subcontract|subcontract agreement|master subcontractor agreement/i.test(
+          i.name,
+        ) ||
+          (/subcontract/i.test(i.name) && /executed|agreement|received|updated/i.test(i.name)))
+      ) {
+        pdfs.push(i);
+      }
+      if (i.type === 'folder' && depth < 5 && /contract|install|project managing|execution|received|workbook/i.test(i.name)) {
+        await walk(i.id, depth + 1);
+      }
+    }
+  }
+  await walk(projectFolderId);
+  return pdfs.sort((a, b) => scoreContractPdf(b.name) - scoreContractPdf(a.name));
+}
+
 export async function findContractPdf(token, projectFolderId) {
-  const pm = await findProjectManaging(token, projectFolderId);
-  if (!pm) return null;
-  const pmItems = await listItems(token, pm.id);
-  const cd = pmItems.find((i) => i.type === 'folder' && /contract documents/i.test(i.name));
-  if (!cd) return null;
+  const pdfs = await collectContractPdfs(token, projectFolderId);
+  return pdfs[0] || null;
+}
 
-  let items = await listItems(token, cd.id);
-  const received = items.find((i) => i.type === 'folder' && /contract received/i.test(i.name));
-  if (received) items = [...items, ...(await listItems(token, received.id))];
+export async function findAllContractPdfs(token, projectFolderId, limit = 3) {
+  return (await collectContractPdfs(token, projectFolderId)).slice(0, limit);
+}
 
-  const pdfs = items.filter(
-    (i) =>
-      i.type === 'file' &&
-      /\.pdf$/i.test(i.name) &&
-      (/contract received|revised contract received|fully executed subcontract|subcontract agreement/i.test(i.name) ||
-        (/subcontract/i.test(i.name) && /executed|agreement|received/i.test(i.name))),
+async function walkMatchingFiles(token, folderId, matcher, depth = 0, out = []) {
+  if (depth > 5) return out;
+  for (const i of await listItems(token, folderId)) {
+    if (i.type === 'file' && matcher(i.name)) out.push(i);
+    if (i.type === 'folder' && depth < 5) await walkMatchingFiles(token, i.id, matcher, depth + 1, out);
+  }
+  return out;
+}
+
+export async function findGcValuesWorkbook(token, projectFolderId) {
+  const hits = await walkMatchingFiles(
+    token,
+    projectFolderId,
+    (n) => /gc values workbook|values workbook/i.test(n) && /\.xlsx$/i.test(n),
   );
-  if (!pdfs.length) return null;
+  hits.sort((a, b) => scoreContractPdf(b.name) - scoreContractPdf(a.name));
+  return hits[0] || null;
+}
 
-  pdfs.sort((a, b) => {
-    const aNum = a.name.match(/\d{6,8}/)?.[0] || '';
-    const bNum = b.name.match(/\d{6,8}/)?.[0] || '';
-    return bNum.localeCompare(aNum) || b.name.localeCompare(a.name);
+export async function findSupplementalSchedulePdfs(token, projectFolderId) {
+  const hits = await walkMatchingFiles(
+    token,
+    projectFolderId,
+    (n) =>
+      /\.pdf$/i.test(n) &&
+      (/master schedule|full schedule|lookahead schedule|project schedule|fabrication.*install.*delivery/i.test(n) ||
+        (/schedule/i.test(n) && /student housing|parallel|gc cabinet transmittal/i.test(n))),
+  );
+  const ranked = hits.sort((a, b) => {
+    const score = (n) =>
+      (/master schedule/i.test(n) ? 30 : 0) +
+      (/full schedule/i.test(n) ? 28 : 0) +
+      (/lookahead/i.test(n) ? 20 : 0) +
+      (/fabrication.*delivery/i.test(n) ? 5 : 0) -
+      (/door.?schedule|panel schedule|mechanical schedule|electrical/i.test(n) ? 40 : 0);
+    return score(b.name) - score(a.name);
   });
-  return pdfs[0];
+  return ranked.slice(0, 2);
 }
 
 export async function findShopDrawingsFolder(token, projectFolderId) {

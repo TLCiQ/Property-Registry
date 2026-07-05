@@ -173,15 +173,101 @@ export function parseScheduleMtoViaPython(xlsxPath) {
   return { trucks, milestones };
 }
 
+const SOURCE_PRIORITY = {
+  'schedule_mto:': 100,
+  'contract:': 80,
+  'gc_values_workbook:': 70,
+  'gc_schedule:': 60,
+};
+
+function sourcePriority(path = '') {
+  for (const [prefix, score] of Object.entries(SOURCE_PRIORITY)) {
+    if (path.startsWith(prefix)) return score;
+  }
+  return 0;
+}
+
+export function parseGcScheduleText(text) {
+  const normalized = text.replace(/Utilities Executed Contract/gi, 'UTILITIES_NTP');
+  const milestones = new Map();
+  const pacing = {};
+
+  const taskPatterns = [
+    ['Cabinet Install (GC Schedule)', /Cabinet(?:s)?(?:,?\s*Doors?\s*(?:&|and)\s*Trim)?[^\n]{0,80}?(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/gi, 'install'],
+    ['Countertop Install (GC Schedule)', /Countertop(?:s)?\s+install[^\n]{0,80}?(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/gi, 'install'],
+    [
+      'Install Cabinets and Countertops (GC Schedule)',
+      /Install Cabinets and Countertops[^\n]{0,80}?(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/gi,
+      'install',
+    ],
+    [
+      'Install Cabinets (GC Schedule)',
+      /Install Cabinets(?!\s+and)[^\n]{0,80}?(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/gi,
+      'install',
+    ],
+    [
+      'Install Countertops (GC Schedule)',
+      /Install Countertops[^\n]{0,80}?(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s+(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/gi,
+      'install',
+    ],
+    ['First Delivery (GC Schedule)', /Stock Cabinets[^\n]{0,80}?(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/gi, 'delivery'],
+    ['Millwork Complete (GC Schedule)', /Millwork Complete[^\n]{0,40}?(\d{1,2}\/\d{1,2}\/\d{2,4})/gi, 'contract'],
+    ['Building Structure Top Out', /Building Structure Top Out[^\n]{0,40}?(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/gi, 'contract'],
+    [
+      'Executed Contract / NTP',
+      /Executed Contract\/Notice to Proceed[^\n]{0,40}?(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/gi,
+      'contract',
+    ],
+  ];
+
+  for (const [name, re, category] of taskPatterns) {
+    for (const m of normalized.matchAll(re)) {
+      const finish = m[2] || m[1];
+      addMilestone(milestones, name, finish, category, `gc_schedule:${name}`);
+    }
+  }
+
+  const datePlan = normalized.match(/DATE PLAN[^\n]{0,40}?(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  if (datePlan) addMilestone(milestones, 'Plans Dated', datePlan[1], 'contract', 'gc_schedule:date_plan');
+
+  return { milestones: [...milestones.values()], pacing, meta: {} };
+}
+
+export function parseGcValuesWorkbookViaPython(xlsxPath) {
+  const script = resolve(dirname(fileURLToPath(import.meta.url)), 'parse-gc-values-workbook.py');
+  const out = execSync(`python3 "${script}" "${xlsxPath}"`, {
+    encoding: 'utf8',
+    maxBuffer: 5 * 1024 * 1024,
+  });
+  const parsed = JSON.parse(out.trim());
+  return parsed.milestones || [];
+}
+
 export function mergeMilestones(...groups) {
   const map = new Map();
   for (const group of groups) {
     for (const m of group || []) {
       const key = m.milestone_name.toLowerCase();
-      if (!map.has(key) || m.source_field_path?.startsWith('schedule_mto')) {
+      const existing = map.get(key);
+      if (!existing || sourcePriority(m.source_field_path) >= sourcePriority(existing.source_field_path)) {
         map.set(key, m);
       }
     }
   }
   return [...map.values()].sort((a, b) => a.target_date.localeCompare(b.target_date));
+}
+
+export function mergeParsedMeta(...metas) {
+  const out = {};
+  for (const meta of metas) {
+    if (!meta) continue;
+    for (const [k, v] of Object.entries(meta)) {
+      if (v != null && out[k] == null) out[k] = v;
+    }
+  }
+  return out;
+}
+
+export function mergePacing(...groups) {
+  return Object.assign({}, ...groups.filter(Boolean));
 }
