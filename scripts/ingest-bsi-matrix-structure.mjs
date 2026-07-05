@@ -122,6 +122,7 @@ async function main() {
 
   for (const u of matrix.units) {
     const ut = u.unit_type ? typeByName.get(u.unit_type) : null;
+    if (!ut?.id && !DRY) continue;
     const patch = {
       property_id: propertyId,
       unit_number: String(u.unit_number),

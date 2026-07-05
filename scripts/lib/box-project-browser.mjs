@@ -68,7 +68,11 @@ export async function findContractPdf(token, projectFolderId) {
   if (received) items = [...items, ...(await listItems(token, received.id))];
 
   const pdfs = items.filter(
-    (i) => i.type === 'file' && /\.pdf$/i.test(i.name) && /contract received/i.test(i.name),
+    (i) =>
+      i.type === 'file' &&
+      /\.pdf$/i.test(i.name) &&
+      (/contract received|revised contract received|fully executed subcontract|subcontract agreement/i.test(i.name) ||
+        (/subcontract/i.test(i.name) && /executed|agreement|received/i.test(i.name))),
   );
   if (!pdfs.length) return null;
 
