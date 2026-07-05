@@ -1941,3 +1941,50 @@ New bed-count roll-up columns on parent tables: `property_floors.total_beds_on_f
 **Migration:** `migrations/002_drop_leasing_url.sql` — copies existing values to `external_ids.legacy_leasing_url`, drops column.
 
 **Code:** Removed from dale-chat API/UI/RITA prompts, Property_Registry scripts (`property-image-ingest`, enrich routes, rita-enrich-batch, migrate-to-registry-iq).
+
+---
+
+## Session log — Jul 5, 2026 (BSI-CSMX property enrich path)
+
+**Goal:** Formalize repeatable BSI/CSMX millwork property enrich pipeline with **Firecrawl website scrape as the final step** (gap-fill for property fields, images, unit layouts).
+
+**Deliverables:**
+- `docs/BSI_CSMX_PROPERTY_ENRICH.md` — phased runbook + mermaid flow
+- `scripts/ingest-bsi-csmx-property.mjs` — orchestrator (`--config`, `--only`, `--from`, `--apply`)
+- `scripts/enrich-bsi-csmx-website.mjs` — config-driven website step (Firecrawl → Cloudinary → gap-fill + optional `layout_asset_urls` mapping)
+- `scripts/lib/bsi-csmx-config.mjs` — config loader
+- `scripts/config/bsi-csmx-property.example.json` — template
+- `scripts/config/troubadour-lubbock-bsi-csmx.json` — Troubadour reference config
+
+**Pipeline order:** extract matrix → core ingest → matrix drawings → bathrooms → floors → floor plans → SKU phases (optional) → **website last**.
+
+**Website step behavior:** Only fills missing `property_url`, hero, logo, brand, developer; merges new Cloudinary images; maps floorplan/unit roles to empty `layout_asset_urls` when enabled. Report: `.firecrawl/<property_key>-website-enrich-report.json`.
+
+---
+
+## Session log — Jul 5, 2026 (floor plans + website proceed)
+
+**Floor plan metadata:** Re-applied `--metadata-only` on all 7 Troubadour floors (A2-01…A2.07 indexed in `property_floors.images`).
+
+**Full Cloudinary upload blocked:** Box Drive PDFs show size in Finder but are cloud-only — `read()`/`cp` hang until hydrated offline. Script fix: `fileReady()` reads PDF header only (not full file); dry-run skips hydrate check; added `--staging-dir=` for offline copies.
+
+**Website enrich applied:** `enrich-bsi-csmx-website.mjs --apply` saved 2 additional images + hero/logo updates.
+
+**Next for floor plan thumbs:** In Box Drive → right-click each A2-0N PDF → *Make Available Offline*, then:
+`node scripts/ingest-troubadour-floor-plans.mjs --apply --staging-dir=/tmp/troubadour-floor-plans`
+
+---
+
+## Session log — Jul 5, 2026 (BSI project ↔ property 1:1 + full enrich doc)
+
+**Scope:** 48 Box BSI millwork folders (`25xxx` / `253xx`) — 47 unique site jobs + 25015 folder collision mapped to `25315`.
+
+**Audit:** `scripts/audit-bsi-csmx-project-property.mjs` — band `25001-25026` = 21/21 ok; full set = **48/48 ok** after repair.
+
+**Repairs applied:** `repair-bsi-csmx-project-property.mjs --apply`
+- `25321` HUB Boulder → property `d2b6391a`
+- Created `25015` → HUB ANN ARBOR `d7aea0dc`
+- Created `25315` → Hub Madison acquisition `afe73b66` (Box folder `25015-Madison J+B`)
+- Deactivated bogus property `Findorff Construction : 25315…` (mis-ingested archaeology row)
+
+**Documentation:** `docs/BSI_CSMX_PROPERTY_ENRICH.md` rewritten — all 14 source systems, phased pipeline, Box API vs Drive rules, audit/repair, orchestrator config.

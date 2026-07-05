@@ -117,6 +117,12 @@ def main() -> None:
             type_counts[unit_type] += 1
             if bath_count:
                 type_bath_counts[unit_type].add(bath_count)
+            lvl = row[1]
+            if lvl is not None and str(lvl).strip():
+                try:
+                    type_floors[unit_type].add(str(int(float(lvl))) if isinstance(lvl, (int, float)) and float(lvl).is_integer() else str(lvl).strip())
+                except (TypeError, ValueError):
+                    type_floors[unit_type].add(str(lvl).strip())
 
         units.append(
             {
@@ -133,6 +139,7 @@ def main() -> None:
 
     unit_types = []
     inconsistent_bath: dict[str, list[int]] = {}
+    type_floors: dict[str, set[str]] = defaultdict(set)
     for name, count in sorted(type_counts.items(), key=lambda x: (-x[1], x[0])):
         baths = sorted(type_bath_counts.get(name, set()))
         bathroom_count = max(baths) if baths else 0
@@ -145,6 +152,7 @@ def main() -> None:
                 "beds_per_unit": infer_beds(name),
                 "standard_bedrooms": infer_beds(name),
                 "bathrooms": bathroom_count,
+                "floors_present": sorted(type_floors.get(name, set()), key=lambda x: int(x) if x.isdigit() else x),
             }
         )
 

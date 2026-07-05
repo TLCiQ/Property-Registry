@@ -1,0 +1,40 @@
+{
+  "property_id": "00000000-0000-0000-0000-000000000000",
+  "property_key": "example_property_key",
+  "property_name": "Example — Student Housing",
+  "division": "BSI",
+  "brand": "Example Brand",
+  "developer": "Example Developer",
+  "site_address": "123 Main St, City, ST 00000",
+  "box": {
+    "root": "/Users/you/Library/CloudStorage/Box-Box/Team Folder/Projects/25XXX-City, ST - Example",
+    "rel": "25XXX-City, ST - Example"
+  },
+  "parent_bsi_job_id": "25019",
+  "factory_orders": ["25198"],
+  "matrix": {
+    "extract_script": "scripts/extract-troubadour-matrix.py",
+    "sheet": "Lubbock"
+  },
+  "website": {
+    "leasing_url": "https://example.com",
+    "developer_url": null,
+    "extra_pages": ["/amenities/", "/floor-plans/", "/gallery/"],
+    "role_classifier": "generic",
+    "map_floorplans_to_unit_types": true,
+    "max_images": 25
+  },
+  "steps": {
+    "core_ingest": "scripts/ingest-troubadour-25198-complete.mjs",
+    "matrix_drawings": "scripts/ingest-troubadour-matrix-drawings.mjs",
+    "bathrooms": "scripts/backfill-troubadour-bathrooms.mjs",
+    "floors": "scripts/ingest-troubadour-floors.mjs",
+    "floor_plans": "scripts/ingest-troubadour-floor-plans.mjs",
+    "skus_phase2": "scripts/ingest-troubadour-phase2.mjs",
+    "skus_phase3": "scripts/ingest-troubadour-phase3.mjs"
+  },
+  "step_flags": {
+    "floor_plans_metadata_only": true,
+    "skip_skus": false
+  }
+}

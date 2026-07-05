@@ -1,0 +1,41 @@
+{
+  "property_id": "095960e3-5b22-4a0c-9528-e3843fed3ede",
+  "property_key": "troubadour_14th_street_lubbock",
+  "property_name": "Troubadour — 14th Street SH",
+  "division": "BSI",
+  "brand": "Troubadour",
+  "developer": "Parallel Group",
+  "site_address": "2413 14th St, Lubbock, TX 79401",
+  "box": {
+    "root": "/Users/geoffreyjackson/Library/CloudStorage/Box-Box/Team Folder/Projects/25019-Lubbock, TX - 14th Street SH",
+    "rel": "25019-Lubbock, TX - 14th Street SH"
+  },
+  "parent_bsi_job_id": "25019",
+  "parent_project_registry_id": "65fa6c13-4596-464f-ae39-5979c0984317",
+  "factory_orders": ["25198", "25199"],
+  "matrix": {
+    "extract_script": "scripts/extract-troubadour-matrix.py",
+    "json": ".firecrawl/troubadour-matrix.json"
+  },
+  "website": {
+    "leasing_url": "https://livetroubadour.com",
+    "developer_url": "https://www.parallel-co.com/troubadour-student-living",
+    "extra_pages": ["/amenities/", "/floor-plans/", "/gallery/", "/virtual-tour/"],
+    "role_classifier": "troubadour",
+    "map_floorplans_to_unit_types": true,
+    "max_images": 30
+  },
+  "steps": {
+    "core_ingest": "scripts/ingest-troubadour-25198-complete.mjs",
+    "matrix_drawings": "scripts/ingest-troubadour-matrix-drawings.mjs",
+    "bathrooms": "scripts/backfill-troubadour-bathrooms.mjs",
+    "floors": "scripts/ingest-troubadour-floors.mjs",
+    "floor_plans": "scripts/ingest-troubadour-floor-plans.mjs",
+    "skus_phase2": "scripts/ingest-troubadour-phase2.mjs",
+    "skus_phase3": "scripts/ingest-troubadour-phase3.mjs"
+  },
+  "step_flags": {
+    "floor_plans_metadata_only": false,
+    "skip_skus": false
+  }
+}

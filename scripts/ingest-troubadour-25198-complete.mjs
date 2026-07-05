@@ -186,6 +186,7 @@ async function main() {
     latitude: 33.5824426,
     longitude: -101.8695213,
     total_units: matrix.unit_count,
+    total_buildings: 1,
     brand_name: 'Troubadour',
     developer_name: 'Parallel Group',
     gc_name: 'Teinert Construction',

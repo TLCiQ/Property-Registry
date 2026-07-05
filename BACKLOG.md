@@ -1,6 +1,6 @@
 # TLC iQ Platform — Property Registry Master Backlog
 
-**Last reviewed:** Jul 4, 2026
+**Last reviewed:** Jul 5, 2026
 
 ## Priority Legend
 - **NOW** — User wants this done in the current or next session
@@ -48,6 +48,9 @@
 | TB-02 | DONE | enrichment | Troubadour phase 2: Counts Workbook SKU bridge (640 rows), project **25199** Overage + 10 Chain-iQ containers, Teinert GC dedupe 7→1. | Jul 4 | Jul 4 |
 | TB-03 | DONE | enrichment | Troubadour phase 3: vanity SKU bridge (237 rows), DALE `millwork_mw_package_sku` mirror (592 rows), NetSuite portfolio on 25019 (job 9271); 25198/25199 clarified as factory POs (no NS job). | Jul 4 | Jul 4 |
 | TB-04 | DONE | assets | Troubadour website images: livetroubadour.com + Parallel dev page → Cloudinary; 24 images (hero, amenities, floor plans, exterior renders, unit Enscape). Script: `ingest-troubadour-website-images.mjs`. | Jul 4 | Jul 4 |
+| BSI-01 | DONE | pipeline | BSI-CSMX property enrich path formalized: orchestrator + config + website-last Firecrawl step. Docs: `docs/BSI_CSMX_PROPERTY_ENRICH.md`. Scripts: `ingest-bsi-csmx-property.mjs`, `enrich-bsi-csmx-website.mjs`, `config/troubadour-lubbock-bsi-csmx.json`. | Jul 5 | Jul 5 |
+| BSI-02 | NEXT | pipeline | Generalize Troubadour hardcoded ingest scripts to read from BSI-CSMX config (property_id, Box paths, matrix sheet) so new millwork jobs need config-only wiring. | Jul 5 | Jul 5 |
+| BSI-03 | DONE | data-gap | Box BSI job ↔ property 1:1 audit + repair: 48/48 Box folders linked; fixed 25321, 25015, 25315; deactivated bogus Findorff property row. Scripts: `audit-bsi-csmx-project-property.mjs`, `repair-bsi-csmx-project-property.mjs`. Doc: `docs/BSI_CSMX_PROPERTY_ENRICH.md` expanded. | Jul 5 | Jul 5 |
 
 ## Done (recent)
 | ID | Status | Category | Description | Added | Updated |
