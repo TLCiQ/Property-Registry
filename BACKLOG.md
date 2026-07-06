@@ -1,6 +1,6 @@
 # TLC iQ Platform — Property Registry Master Backlog
 
-**Last reviewed:** Jul 5, 2026
+**Last reviewed:** Jul 6, 2026
 
 ## Priority Legend
 - **NOW** — User wants this done in the current or next session
@@ -13,7 +13,7 @@
 ## Items
 | ID | Status | Category | Description | Added | Updated |
 |----|--------|----------|-------------|-------|---------|
-| MH-01 | DONE | data-gap | Morgan Hill: backfilled `standard_bedrooms` for all 86 types — `A*`→1, `B*`→2 (user confirmed Jun 19). `total_sqft` still NULL. Structural bed sum = 479 (br×units). | Jun 19 | Jun 19 |
+| DS-01 | DONE | reporting | Data sourcing checklist: generator + weekly cron + UI at `/property-registry/reports/data-sourcing` with manual refresh; audit history in `registry_data_sourcing_runs`. | Jul 6 | Jul 6 |
 | MH-02 | DONE | data-gap | Morgan Hill: `beds_per_unit` aligned to `bedrooms_structural` when no specialty fields (26 B-types fixed). Total beds = 479. Beds column UI only for divider/shared/pod/murphy/super-murphy. | Jun 19 | Jun 19 |
 | MH-03 | DONE | assets | Unit-type finish layouts from `UNIT PLANS_5.2025.pdf` — 86/86 types mapped + Cloudinary; sheet thumbnail per page (multi-unit sheets). | Jun 19 | Jun 20 |
 | MH-14 | DONE | data-gap | Morgan Hill full populate (`ingest-morganhill-complete.mjs`): 390 unit metadata, 86/86 sqft, 34 shop drawings, kitchen_variants, property net sqft 342,682 sf. | Jul 4 | Jul 4 |

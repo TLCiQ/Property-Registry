@@ -1,6 +1,29 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** Jul 5, 2026 (evening)
+**Last updated:** Jul 6, 2026
+
+## Session: Jul 6, 2026 — Data sourcing checklist (2025–2027)
+
+**User request:** Produce data sourcing checklist / citation list verifying what information for which project comes from where — all BUs, 2025–2027 property-project families.
+
+**Deliverables:**
+- `docs/DATA_SOURCING_CHECKLIST_2025-2027.md` — 463 families, 528 projects (live Registry-iQ)
+- `.firecrawl/data-sourcing-checklist-2025-2027.json` — machine-readable same
+- `scripts/generate-data-sourcing-checklist.mjs` — CLI wrapper (`--persist` writes audit row)
+- `scripts/lib/data-sourcing-checklist-core.mjs` — shared generator (mirrored in dale-chat)
+- `scripts/migration-registry-data-sourcing-runs.sql` — append-only audit table on Registry-iQ
+
+**UI + automation (dale-chat / tlciq-platform):**
+- Report: `/property-registry/reports/data-sourcing` — summary, family search, run history
+- Manual refresh: admin POST `/api/property-registry/reports/data-sourcing/refresh`
+- Weekly cron: `/api/cron/data-sourcing-checklist` — Mon 06:00 UTC (`DATA_SOURCING_CRON_SECRET`)
+- Audit table: `registry_data_sourcing_runs` (never delete; first run `1f0f0ce9-4252-49a1-8e41-0cb4a53d2b0d`)
+
+**Coverage summary (verified live Jul 6):** BSI/CSMX have Box contract citations; UF/TLCH primarily DALE-IS + TLCIQ-PROD; Web BU not tagged separately in Registry (rolls under UF). Full BSI detail only 25019 + 25048.
+
+**Re-run:** `node scripts/generate-data-sourcing-checklist.mjs` · `node scripts/generate-data-sourcing-checklist.mjs --persist`
+
+---
 
 ## Session: Jul 5, 2026 (evening) — Zero-milestone 14-job remediation
 
