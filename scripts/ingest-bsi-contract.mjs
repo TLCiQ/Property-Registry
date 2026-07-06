@@ -96,7 +96,7 @@ async function main() {
   const pacingGroups = [];
   let trucks = [];
 
-  const contractFiles = await findAllContractPdfs(token, folder.id, 3);
+  const contractFiles = await findAllContractPdfs(token, folder.id, 5);
   if (!contractFiles.length) console.warn('  No subcontract PDF found');
   for (const cf of contractFiles) {
     const pdfPath = resolve(cacheDir, `${job.project_id}-contract-${cf.id}.pdf`);

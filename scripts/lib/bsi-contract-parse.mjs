@@ -46,20 +46,109 @@ function addMilestone(map, name, date, category, source) {
   }
 }
 
+function normalizeContractText(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractContractExecutedDate(text) {
+  const t = normalizeContractText(text);
+  if (/on this __ day of|on this day of ___________/i.test(t)) {
+    return null;
+  }
+
+  const attempts = [
+    {
+      source: 'contract:executed_date:benchmark',
+      raw: () => {
+        const m = t.match(/made and entered into this\s+([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/i);
+        return m ? `${m[1]} ${m[2]}, ${m[3]}` : null;
+      },
+    },
+    {
+      source: 'contract:executed_date:work_order',
+      raw: () => t.match(/effective as of\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1] || null,
+    },
+    {
+      source: 'contract:executed_date:aia',
+      raw: () => {
+        const m = t.match(
+          /AGREEMENT made as of\s+(?:[A-Za-z]+\s+\((\d{1,2})(?:st|nd|rd|th)?\)\s+)?Day of\s+([A-Za-z]+)\s+in the year\s+(\d{4})/i,
+        );
+        if (!m) return null;
+        const day = m[1] || m[0].match(/\((\d{1,2})/)?.[1];
+        return day ? `${m[2]} ${day}, ${m[3]}` : null;
+      },
+    },
+    {
+      source: 'contract:executed_date:agreement',
+      raw: () => {
+        const m = t.match(
+          /made and entered into on this\s+(\d{1,2})(?:st|nd|rd|th)?\s+(?:day of\s+)?([A-Za-z]+),?\s*(\d{4})/i,
+        );
+        return m ? `${m[2]} ${m[1]}, ${m[3]}` : null;
+      },
+    },
+    {
+      source: 'contract:executed_date:agreement',
+      raw: () => {
+        const m = t.match(/made and entered into on this\s+(\d{1,2})(?:st|nd|rd|th)?\s+of\s+([A-Za-z]+),?\s*(\d{4})/i);
+        return m ? `${m[2]} ${m[1]}, ${m[3]}` : null;
+      },
+    },
+    {
+      source: 'contract:executed_date:',
+      raw: () => {
+        const m = t.match(/made this\s+(\d{1,2})(?:st|nd|rd|th)?\s+day of\s+([A-Za-z]+)\s*,?\s*(\d{4})/i);
+        return m ? `${m[2]} ${m[1]}, ${m[3]}` : null;
+      },
+    },
+    {
+      source: 'contract:executed_date:received',
+      raw: () =>
+        t.match(new RegExp(`Date:\\s*(\\d{1,2}\\/\\d{1,2}\\/\\d{2,4}|(?:${MONTHS})\\s+\\d{1,2},?\\s+\\d{4})`, 'i'))?.[1] || null,
+    },
+    {
+      source: 'contract:executed_date:received',
+      raw: () => t.match(/Cabinets_and_Countertops-(\d{4}-\d{2}-\d{2})/i)?.[1] || null,
+    },
+  ];
+
+  for (const attempt of attempts) {
+    const iso = parseFlexibleDate(attempt.raw());
+    if (iso) return { iso, source: attempt.source };
+  }
+  return null;
+}
+
 export function parseContractText(text) {
+  const normalized = normalizeContractText(text);
   const milestones = new Map();
   const pacing = {};
   const meta = {};
 
-  const contractDate =
-    text.match(new RegExp(`Date:\\s*(\\d{1,2}\\/\\d{1,2}\\/\\d{2,4}|(?:${MONTHS})\\s+\\d{1,2},?\\s+\\d{4})`, 'i'))?.[1] ||
-    text.match(/made this\s+\d{1,2}(?:st|nd|rd|th)?\s+day of\s+([A-Za-z]+)\s*,?\s*(\d{4})/i);
-  if (contractDate) {
-    const iso = parseFlexibleDate(Array.isArray(contractDate) ? `${contractDate[1]} 1, ${contractDate[2]}` : contractDate);
-    if (iso) {
-      meta.contract_date = iso;
-      addMilestone(milestones, 'Contract Executed', iso, 'contract', 'contract:executed_date');
-    }
+  const executed = extractContractExecutedDate(text);
+  if (executed) {
+    meta.contract_date = executed.iso;
+    addMilestone(milestones, 'Contract Executed', executed.iso, 'contract', executed.source);
+  }
+
+  const primeContract = normalized.match(/Prime Contract[^)]*dated:\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  if (primeContract) {
+    addMilestone(milestones, 'Prime Contract Date', primeContract[1], 'contract', 'contract:prime_contract_date');
+  }
+
+  const progressSchedule = normalized.match(/Progress Schedule[^0-9]{0,40}dated\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  if (progressSchedule) {
+    addMilestone(milestones, 'Plans Dated', progressSchedule[1], 'contract', 'contract:progress_schedule_dated');
+  }
+
+  const exhibit6 = normalized.match(/Exhibit 6 Project Schedule\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  if (exhibit6) {
+    addMilestone(milestones, 'Plans Dated', exhibit6[1], 'contract', 'contract:exhibit_6_schedule');
   }
 
   const labelPatterns = [
@@ -72,37 +161,37 @@ export function parseContractText(text) {
     ['Substantial Completion', /Substantial\s+Completion[:\s]+(\d{1,2}\/\d{1,2}\/\d{2,4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4})/gi, 'contract'],
   ];
   for (const [name, re, category] of labelPatterns) {
-    for (const m of text.matchAll(re)) addMilestone(milestones, name, m[1], category, `contract:${name}`);
+    for (const m of normalized.matchAll(re)) addMilestone(milestones, name, m[1], category, `contract:${name}`);
   }
 
-  const commence = text.match(/commence on or about\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  const commence = normalized.match(/commence on or about\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i);
   if (commence) {
     addMilestone(milestones, 'Work Commencement (Contract)', commence[1], 'install', 'contract:exhibit_b1_commence');
     pacing.work_commence = parseFlexibleDate(commence[1]);
   }
 
-  const fab = text.match(/Fabrication time.*?(\d+)\s+Calendar Days/i);
+  const fab = normalized.match(/Fabrication time.*?(\d+)\s+Calendar Days/i);
   if (fab) pacing.fabrication_calendar_days = parseInt(fab[1], 10);
 
-  const shopWeeks = text.match(/Shop drawings.*?within\s+(?:two\s+\(2\)|(\d+))\s*weeks/i);
+  const shopWeeks = normalized.match(/Shop drawings.*?within\s+(?:two\s+\(2\)|(\d+))\s*weeks/i);
   if (shopWeeks) {
     pacing.shop_drawings_weeks = shopWeeks[1] ? parseInt(shopWeeks[1], 10) : 2;
   }
 
-  const installRate = text.match(/Installation\s*=\s*(?:Five\s+\(5\)|(\d+))\s+units per day/i);
+  const installRate = normalized.match(/Installation\s*=\s*(?:Five\s+\(5\)|(\d+))\s*units per day/i);
   if (installRate) pacing.install_units_per_day = installRate[1] ? parseInt(installRate[1], 10) : 5;
 
-  // MS Project schedule rows (IBG Exhibit D)
-  for (const m of text.matchAll(
-    /\n\s*\d+\s+.*?(Millwork Complete|Cabinet(?:ry)? Complete|Countertops? Complete|Cabinets.*?Complete|Millwork.*?Complete).*?\s(\d{1,2}\/\d{1,2}\/\d{2,4})/gi,
+  // MS Project schedule rows (IBG Exhibit D) — strict task names only
+  for (const m of normalized.matchAll(
+    /\b(\d{1,3})\s+(Millwork Complete|Cabinet(?:ry)? Complete|Countertops? Complete)\b[^0-9]{0,30}(\d{1,2}\/\d{1,2}\/\d{2,4})\b/gi,
   )) {
-    addMilestone(milestones, m[1].replace(/\s+/g, ' '), m[2], 'contract', `contract:exhibit_d:${m[1]}`);
+    addMilestone(milestones, m[2].replace(/\s+/g, ' '), m[3], 'contract', `contract:exhibit_d:${m[2]}`);
   }
 
   // Drawing log → Plans Dated if not already set (CD Permit revision dates)
   if (![...milestones.keys()].some((k) => k.includes('plans dated'))) {
     const archDates = [];
-    for (const m of text.matchAll(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b\s+CD Permit/gi)) {
+    for (const m of normalized.matchAll(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b\s+CD Permit/gi)) {
       const iso = parseFlexibleDate(m[1]);
       if (!iso) continue;
       const y = parseInt(iso.slice(0, 4), 10);
@@ -175,6 +264,12 @@ export function parseScheduleMtoViaPython(xlsxPath) {
 
 const SOURCE_PRIORITY = {
   'schedule_mto:': 100,
+  'contract:executed_date:received': 92,
+  'contract:executed_date:aia': 91,
+  'contract:executed_date:benchmark': 90,
+  'contract:executed_date:work_order': 88,
+  'contract:executed_date:agreement': 85,
+  'contract:executed_date:': 82,
   'contract:': 80,
   'gc_values_workbook:': 70,
   'gc_schedule:': 60,

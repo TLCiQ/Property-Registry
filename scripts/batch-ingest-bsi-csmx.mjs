@@ -34,6 +34,14 @@ const SKIP = new Set(
     .map((s) => s.trim())
     .filter(Boolean) || [],
 );
+const ONLY_JOBS = new Set(
+  process.argv
+    .find((a) => a.startsWith('--jobs='))
+    ?.split('=')[1]
+    ?.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean) || [],
+);
 
 const FULL_CONFIGS = {
   '25019': 'scripts/config/troubadour-lubbock-bsi-csmx.json',
@@ -57,6 +65,7 @@ function shouldRun(phase) {
 
 function filterJobs(jobs) {
   let list = jobs.filter((j) => !SKIP.has(j.project_id));
+  if (ONLY_JOBS.size) list = list.filter((j) => ONLY_JOBS.has(j.project_id));
   if (BAND) {
     const { min, max } = parseBand(BAND);
     list = list.filter((j) => {

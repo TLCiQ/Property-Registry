@@ -61,6 +61,8 @@ function scoreContractPdf(name) {
   let score = 0;
   if (/contract received/i.test(n)) score += 100;
   if (/revised contract received/i.test(n)) score += 95;
+  if (/executed.*cabinet|executed.*countertop|cabinets_and_countertop|task order.*executed|fully executed.*blake|subcontract package|subcontract_package/i.test(n)) score += 92;
+  if (/subcontract -/i.test(n)) score += 88;
   if (/fully executed/i.test(n)) score += 80;
   if (/subcontract agreement/i.test(n)) score += 60;
   if (/master subcontractor agreement/i.test(n)) score += 40;
@@ -69,28 +71,39 @@ function scoreContractPdf(name) {
   return score;
 }
 
+function isContractPdfName(name) {
+  const n = name.toLowerCase();
+  if (/sample|old|template|checklist|coi|insurance|assignment|attachment f|req for payment|safety policy|competent person|valuation form|msa_|master subcontractor agreement/i.test(n)) {
+    return false;
+  }
+  if (/mod [a-d]\s*-|modification|change order only/i.test(n)) return false;
+  return (
+    /contract received|revised contract received|fully executed subcontract|subcontract agreement|subcontract work order|subcontract -|subcontract package|subcontract_package|task order.*executed|executed.*cabinet|executed.*countertop|executed.*blake|cabinets_and_countertop|blake solutions_subcontract agreement_executed/i.test(
+      n,
+    ) ||
+    (/subcontract/i.test(n) && /executed|agreement|received|updated|gateway|cabinet|countertop|work order|package|regional street|blake/i.test(n))
+  );
+}
+
+const CONTRACT_WALK_FOLDERS =
+  /contract|install|project managing|execution|received|workbook|subcontract|attachment|production|schedule|shop drawing|specification|pm\b/i;
+
 async function collectContractPdfs(token, projectFolderId) {
   const pdfs = [];
   async function walk(folderId, depth = 0) {
-    if (depth > 5) return;
+    if (depth > 6) return;
     for (const i of await listItems(token, folderId)) {
-      if (
-        i.type === 'file' &&
-        /\.pdf$/i.test(i.name) &&
-        (/contract received|revised contract received|fully executed subcontract|subcontract agreement|master subcontractor agreement/i.test(
-          i.name,
-        ) ||
-          (/subcontract/i.test(i.name) && /executed|agreement|received|updated/i.test(i.name)))
-      ) {
+      if (i.type === 'file' && /\.pdf$/i.test(i.name) && isContractPdfName(i.name)) {
         pdfs.push(i);
       }
-      if (i.type === 'folder' && depth < 5 && /contract|install|project managing|execution|received|workbook/i.test(i.name)) {
+      if (i.type === 'folder' && depth < 6 && (depth < 2 || CONTRACT_WALK_FOLDERS.test(i.name))) {
         await walk(i.id, depth + 1);
       }
     }
   }
   await walk(projectFolderId);
-  return pdfs.sort((a, b) => scoreContractPdf(b.name) - scoreContractPdf(a.name));
+  const deduped = [...new Map(pdfs.map((p) => [p.id, p])).values()];
+  return deduped.sort((a, b) => scoreContractPdf(b.name) - scoreContractPdf(a.name));
 }
 
 export async function findContractPdf(token, projectFolderId) {
@@ -121,25 +134,33 @@ export async function findGcValuesWorkbook(token, projectFolderId) {
   return hits[0] || null;
 }
 
-export async function findSupplementalSchedulePdfs(token, projectFolderId) {
-  const hits = await walkMatchingFiles(
-    token,
-    projectFolderId,
-    (n) =>
-      /\.pdf$/i.test(n) &&
-      (/master schedule|full schedule|lookahead schedule|project schedule|fabrication.*install.*delivery/i.test(n) ||
-        (/schedule/i.test(n) && /student housing|parallel|gc cabinet transmittal/i.test(n))),
+function isSupplementalSchedulePdf(name) {
+  if (!/\.pdf$/i.test(name)) return false;
+  const n = name.toLowerCase();
+  if (/door.?schedule|window.?schedule|storefront.?schedule|panel schedule|mechanical schedule|electrical|lighting schedule|equipment schedule|dwelling panel|finish schedules\.pdf$/i.test(n)) {
+    return false;
+  }
+  return (
+    /master schedule|full schedule|lookahead schedule|project schedule|production schedule|subcontractor schedule|unit finish schedule|fabrication.*install.*delivery|gantt\.pdf/i.test(n) ||
+    (/schedule/i.test(n) && /student housing|parallel|gc cabinet transmittal|attachment c|finish schedule|production/i.test(n))
   );
+}
+
+export async function findSupplementalSchedulePdfs(token, projectFolderId) {
+  const hits = await walkMatchingFiles(token, projectFolderId, isSupplementalSchedulePdf);
   const ranked = hits.sort((a, b) => {
     const score = (n) =>
+      (/production schedule/i.test(n) ? 35 : 0) +
+      (/subcontractor schedule|attachment c/i.test(n) ? 34 : 0) +
       (/master schedule/i.test(n) ? 30 : 0) +
       (/full schedule/i.test(n) ? 28 : 0) +
+      (/unit finish schedule/i.test(n) ? 26 : 0) +
       (/lookahead/i.test(n) ? 20 : 0) +
       (/fabrication.*delivery/i.test(n) ? 5 : 0) -
       (/door.?schedule|panel schedule|mechanical schedule|electrical/i.test(n) ? 40 : 0);
     return score(b.name) - score(a.name);
   });
-  return ranked.slice(0, 2);
+  return ranked.slice(0, 3);
 }
 
 export async function findShopDrawingsFolder(token, projectFolderId) {

@@ -51,6 +51,8 @@
 | BSI-01 | DONE | pipeline | BSI-CSMX property enrich path formalized: orchestrator + config + website-last Firecrawl step. Docs: `docs/BSI_CSMX_PROPERTY_ENRICH.md`. Scripts: `ingest-bsi-csmx-property.mjs`, `enrich-bsi-csmx-website.mjs`, `config/troubadour-lubbock-bsi-csmx.json`. | Jul 5 | Jul 5 |
 | BSI-02 | NEXT | pipeline | Generalize Troubadour hardcoded ingest scripts to read from BSI-CSMX config (property_id, Box paths, matrix sheet) so new millwork jobs need config-only wiring. | Jul 5 | Jul 5 |
 | BSI-03 | DONE | data-gap | Box BSI job ↔ property 1:1 audit + repair: 48/48 Box folders linked; fixed 25321, 25015, 25315; deactivated bogus Findorff property row. Scripts: `audit-bsi-csmx-project-property.mjs`, `repair-bsi-csmx-project-property.mjs`. Doc: `docs/BSI_CSMX_PROPERTY_ENRICH.md` expanded. | Jul 5 | Jul 5 |
+| BSI-04 | DONE | data-gap | Zero-milestone 14-job remediation: parser + Box discovery fixes → **47/48** jobs with ≥1 milestone (was 34). Only `25024` Verve TLO still empty (no contract PDFs in Box). Audit: `audit-bsi-zero-milestone-sources.mjs`. | Jul 5 | Jul 5 |
+| BSI-05 | BLOCKED | data-gap | `25024` Verve TLO — Box project folder has zero subcontract/schedule files; milestones blocked until PM uploads Contract Received or SCHEDULE_MTO. | Jul 5 | Jul 5 |
 
 ## Done (recent)
 | ID | Status | Category | Description | Added | Updated |

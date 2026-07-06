@@ -1,6 +1,95 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** Jul 4, 2026
+**Last updated:** Jul 5, 2026 (evening)
+
+## Session: Jul 5, 2026 (evening) — Zero-milestone 14-job remediation
+
+**User request:** Tackle the 14 BSI jobs with zero plan milestones.
+
+**Root cause (audit):** Ingest ran successfully but parsers missed date formats — Blake `made and entered into on this 11th day of July, 2025` (often split across lines), Benchmark `made and entered into this July 02, 2025`, AIA `AGREEMENT made as of Twelfth (12th) Day of June in the year 2025`, CS Construction `effective as of 8/21/25`. Box discovery also missed nested files (`Subcontract - …`, `Fully Executed_*`, `Attachment C - Subcontractor Schedule`, production Gantt PDFs).
+
+**Shipped:**
+- `scripts/lib/bsi-contract-parse.mjs` — whitespace-normalized text; multi-format executed-date extraction with source priority (AIA/Benchmark/work-order > Blake template)
+- `scripts/lib/box-project-browser.mjs` — deeper folder walk; broader contract + supplemental schedule PDF matching
+- `scripts/audit-bsi-zero-milestone-sources.mjs` — dry-run Box/parse audit
+- `scripts/batch-ingest-bsi-csmx.mjs` — `--jobs=25004,25006,...` filter
+
+**Results after re-ingest (`--jobs=14`):**
+
+| Metric | Before | After |
+|--------|--------|-------|
+| 48-job jobs with ≥1 milestone | 34 | **47 / 48** |
+| Former zero-ms 14 | 14 | **1** (`25024` only) |
+| Jobs with 4+ milestones | 2 | 2 (25019, 25048) |
+
+**Per-job outcomes (former zero-ms set):**
+- **25004** — Plans Dated + Contract Executed
+- **25006** — Contract Executed (Fully Executed Regional Street PDF)
+- **25015** — Contract Executed + Cabinet Install (GC schedule PDF)
+- **25018** — Contract Executed + Cabinet Install (Attachment C + production schedule)
+- **25020** — Contract Executed (AIA June 12, 2025)
+- **25024** — **still 0** — Box project folder has no contract/schedule PDFs at all
+- **25027, 25031, 25040, 25042, 25046, 25321** — Contract Executed
+- **25036** — Plans Dated + Contract Executed (work order)
+- **25045** — Cabinet Install only (blank Blake template; no executed subcontract in Box)
+
+**Audit artifacts:** `.firecrawl/bsi-zero-ms-audit.json`, `.firecrawl/bsi-zero-ms-reingest.log`
+
+**Re-run 14 only:**
+```bash
+cd "/Users/geoffreyjackson/Dropbox/The Living Company/TLC iQ/Property_Registry"
+node scripts/batch-ingest-bsi-csmx.mjs --apply --only=contract --jobs=25004,25006,25015,25018,25020,25024,25027,25031,25036,25040,25042,25045,25046,25321
+```
+
+**Blocked:** `25024` Verve TLO — no subcontract or schedule files in Box; needs PM upload before ingest can populate milestones.
+
+---
+
+## Session: Jul 5, 2026 — BSI contract pacing batch + fallback sources
+
+**User request:** Proceed with ingest; parse original contracts for plan dates and pacing.
+
+**Shipped (Property_Registry, pushed to `main`):**
+- `scripts/ingest-bsi-contract.mjs` — multi-source contract/pacing ingest
+- `scripts/lib/bsi-contract-parse.mjs` — Contract PDF + GC master/lookahead schedule parsing
+- `scripts/lib/parse-gc-values-workbook.py`, `scripts/lib/parse-schedule-mto.py`
+- `scripts/lib/box-project-browser.mjs` — ranked contract PDF discovery, GC Values Workbook, supplemental schedule PDFs
+- `scripts/batch-ingest-bsi-csmx.mjs` — batch runner (contract / structure / full)
+- `scripts/ingest-bsi-matrix-structure.mjs` + `scripts/extract-bsi-matrix.py` — generic matrix → units/types
+
+**Batch runs (48 Box BSI jobs):**
+1. Structure + contract pass (skip 25019 full re-orchestrator)
+2. Contract re-pass with GC schedule + workbook fallbacks (~58 min)
+
+**Registry-iQ results after Jul 5 batch (verified live):**
+
+| Metric | Before Jul 5 | After Jul 5 |
+|--------|--------------|-------------|
+| Jobs with ≥1 milestone | 2 | **34 / 48** |
+| Jobs with 4+ plan milestones | 1 (25048) | **2** (25048 + **25019 Troubadour**) |
+| Jobs with `schedule_year` / install / completion fields | ~1 | **47 / 48** |
+| Jobs with property units (matrix structure) | ~10 | **36 / 48** |
+| Full detail (room layouts + scoped SKUs) | 2 | **2** (25019, 25048 only) |
+
+**Troubadour (`25019`) milestones now from GC Master Schedule:**
+- Executed Contract / NTP 2025-04-08
+- Install Cabinets and Countertops 2026-05-01
+- First Delivery (Stock Cabinets) 2026-05-20
+- Building Structure Top Out 2026-06-01
+- Install Cabinets 2026-06-04
+- Install Countertops 2026-06-12
+
+**Still no milestones (14 jobs):** `25004, 25006, 25015, 25018, 25020, 25024, 25027, 25031, 25036, 25040, 25042, 25045, 25046, 25321` — missing Contract Received PDF and/or GC schedule rows with BSI-relevant task names.
+
+**Reports:** `.firecrawl/bsi-batch-ingest-report.json`, `.firecrawl/bsi-contract-batch-2.log`
+
+**Re-run:**
+```bash
+cd "/Users/geoffreyjackson/Dropbox/The Living Company/TLC iQ/Property_Registry"
+node scripts/batch-ingest-bsi-csmx.mjs --apply --only=contract
+```
+
+---
 
 ## Session: Jul 4, 2026 — Expandable image lightbox (dale-chat)
 
