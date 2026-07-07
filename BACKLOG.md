@@ -1,6 +1,6 @@
 # TLC iQ Platform — Property Registry Master Backlog
 
-**Last reviewed:** Jul 6, 2026
+**Last reviewed:** Jul 7, 2026
 
 ## Priority Legend
 - **NOW** — User wants this done in the current or next session
@@ -14,6 +14,8 @@
 | ID | Status | Category | Description | Added | Updated |
 |----|--------|----------|-------------|-------|---------|
 | CSMX-01 | DONE | pipeline | Full BSI detail batch for 8 CSMX Box jobs (`batch-ingest-csmx-full.mjs`): contract + matrix structure + floors + shop drawings + website. Scripts: `ingest-bsi-csmx-full.mjs`, `ingest-bsi-floors.mjs`, `ingest-bsi-shop-drawings.mjs`, `lib/bsi-csmx-auto-config.mjs`. Report: `.firecrawl/csmx-full-detail-batch-report.json`. Gaps: SKUs still require Counts Workbook (per-property); `25332` amenity matrix has no types; `25331` matrix has duplicate unit# rows (50 unique units). | Jul 7 | Jul 7 |
+| CSMX-02 | DONE | pipeline | CSMX SKU bridge gaps closed (Jul 7): multi-sheet matrix structure (`extract-bsi-matrix.py`), tier/unit-type matrix modes (`extract-bsi-bom-keys.py`), unit lookup normalization (`lib/bsi-unit-match.mjs`). Apply results: `25326` 461/461 units → 2,095 SKU rows; `25328` 212/214 → 1,314; `25331` 50 types → 922; `25337` 108 tiers → 402. | Jul 7 | Jul 7 |
+| CSMX-03 | BLOCKED | pipeline | `25325` Hub Chauncey SKU bridge: matrix uses `KITCHEN TYPE` codes (not MW); 86 MW xls + 13 xlsm workbooks in Box. Need unit-type→MW crosswalk (xlsm THUS/OPP tabs or kit-label index from 20-20 exports). 672 matrix units, 0 SKUs applied. | Jul 7 | Jul 7 |
 | MH-02 | DONE | data-gap | Morgan Hill: `beds_per_unit` aligned to `bedrooms_structural` when no specialty fields (26 B-types fixed). Total beds = 479. Beds column UI only for divider/shared/pod/murphy/super-murphy. | Jun 19 | Jun 19 |
 | MH-03 | DONE | assets | Unit-type finish layouts from `UNIT PLANS_5.2025.pdf` — 86/86 types mapped + Cloudinary; sheet thumbnail per page (multi-unit sheets). | Jun 19 | Jun 20 |
 | MH-14 | DONE | data-gap | Morgan Hill full populate (`ingest-morganhill-complete.mjs`): 390 unit metadata, 86/86 sqft, 34 shop drawings, kitchen_variants, property net sqft 342,682 sf. | Jul 4 | Jul 4 |

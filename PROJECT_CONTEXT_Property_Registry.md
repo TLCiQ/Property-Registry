@@ -2,6 +2,31 @@
 
 **Last updated:** Jul 7, 2026
 
+## Session: Jul 7, 2026 — CSMX SKU bridge gap fixes
+
+**User request:** Fix unit-number normalization (25326/25328) and tier-based matrix joins (25331/25337).
+
+**Root causes:**
+- `extract-bsi-matrix.py` only read one building sheet → South Building (`1-xxx`) and extra Knoxville units missing from registry.
+- `extract-bsi-bom-keys.py` rejected `TIER` unit IDs (25337) and used wrong column layout for Clemson tier sheets (25331).
+
+**Changes:**
+- Multi-sheet matrix extract + structure re-apply for `25326` (+226 units) and `25328` (+86 units).
+- `scripts/lib/bsi-unit-match.mjs` — tier spacing normalization, `-LL` suffix strip, building-prefix aliases.
+- BOM key extract: tier-as-unit mode, unit-type-as-key mode (Clemson), bare `MW` column, skip review sheets.
+
+**SKU apply (live `bsi_counts_workbook`):**
+
+| Job | Units matched | SKU rows | Notes |
+|-----|---------------|----------|-------|
+| 25326 Hub II | 461/461 | 2,095 | was 235/461 |
+| 25328 Knoxville | 212/214 | 1,314 | was 126/214; 466/266 not in matrix buildings |
+| 25331 Clemson II | 50/96 types | 922 | registry is unit-type keyed (50 rows) |
+| 25337 Tampa II | 108/108 tiers | 402 | matrix has 392 tier rows (multi-level); registry has 108 |
+| 25325 Chauncey | — | 0 | **BLOCKED** — KITCHEN TYPE ≠ MW; needs xlsm crosswalk (CSMX-03) |
+
+---
+
 ## Session: Jul 7, 2026 — CSMX full BSI detail batch
 
 **User request:** Run full BSI detail for all CSMX projects.

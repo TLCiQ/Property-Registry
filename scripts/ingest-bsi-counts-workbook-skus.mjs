@@ -16,6 +16,7 @@ import { execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { buildUnitLookup, normalizeUnitKey, resolveRegistryUnit } from './lib/bsi-unit-match.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -67,6 +68,42 @@ function bomKey(mwBase, topOpp) {
 
 function roomLabel(topOpp, kitchenCab) {
   return `${topOpp}|${kitchenCab}`;
+}
+
+function baseTypeName(name) {
+  return String(name || '')
+    .replace(/\s*-\s*TYPE.*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function resolveMwFromUnitType(unitTypeName, kitchenType, kitLabels) {
+  if (!unitTypeName || !kitLabels || !Object.keys(kitLabels).length) return null;
+  const bt = baseTypeName(unitTypeName);
+  let candidates = Object.entries(kitLabels).filter(([, kit]) => {
+    const bk = baseTypeName(kit);
+    return bk === bt || kit.toUpperCase().includes(bt) || bt.includes(bk.split(' ')[0]);
+  });
+  if (kitchenType) {
+    const kt = String(kitchenType).trim().toLowerCase();
+    const ktFiltered = candidates.filter(
+      ([, kit]) => kit.toLowerCase().startsWith(kt) || kit.toLowerCase().includes(`${kt} type`),
+    );
+    if (ktFiltered.length === 1) return ktFiltered[0][0];
+    if (ktFiltered.length > 1) candidates = ktFiltered;
+  }
+  if (candidates.length === 1) return candidates[0][0];
+  return null;
+}
+
+function resolveMatrixMw(mu, workbookBases, kitLabels) {
+  let mwBase = mu.mw_base ? resolveMwBase(normMw(mu.mw_base), workbookBases) : null;
+  if (!mwBase && mu.kitchen_type && kitLabels) {
+    mwBase = resolveMwFromUnitType(mu.unit_type_name, mu.kitchen_type, kitLabels);
+  }
+  if (mwBase) mwBase = resolveMwBase(normMw(mwBase), workbookBases);
+  return mwBase;
 }
 
 async function fetchAll(client, table, select, filters = {}) {
@@ -155,33 +192,57 @@ async function main() {
     fetchAll(reg, 'property_units', 'id, unit_number, unit_type_id', { property_id: PROPERTY_ID }),
     fetchAll(reg, 'property_unit_types', 'id, unit_type_name', { property_id: PROPERTY_ID }),
   ]);
-  const unitByNumber = new Map(registryUnits.map((u) => [String(u.unit_number), u]));
-  const typeNameById = new Map(unitTypes.map((t) => [t.id, t.unit_type_name]));
+  const unitLookup = buildUnitLookup(registryUnits);
+  const typeByName = new Map(unitTypes.map((t) => [t.unit_type_name, t]));
+  const typeById = new Map(unitTypes.map((t) => [t.id, t.unit_type_name]));
+  const kitLabels = bomPayload.kit_labels || {};
 
   const variants = new Map();
-  const gaps = { matrix_unit_missing_registry: [], no_bom_match: [] };
+  const gaps = { matrix_unit_missing_registry: [], no_bom_match: [], no_mw_resolve: [] };
 
   for (const mu of matrix.units) {
-    const ru = unitByNumber.get(String(mu.unit_number));
+    let ru = resolveRegistryUnit(unitLookup, mu.unit_number);
+
+    // Clemson-style: registry stores unit type names as unit_number
+    if (!ru && mu.join_mode === 'unit_type_key') {
+      const typeKey = normalizeUnitKey(mu.unit_number);
+      ru = unitLookup.get(typeKey);
+      if (!ru && typeByName.has(mu.unit_number)) {
+        ru = registryUnits.find((u) => typeById.get(u.unit_type_id) === mu.unit_number);
+      }
+    }
+
+    // Fallback: match by unit_type_name when matrix unit# differs from registry
+    if (!ru && mu.unit_type_name && typeByName.has(mu.unit_type_name)) {
+      ru = registryUnits.find((u) => typeById.get(u.unit_type_id) === mu.unit_type_name);
+    }
+
     if (!ru?.unit_type_id) {
       gaps.matrix_unit_missing_registry.push(mu.unit_number);
       continue;
     }
-    const mwBase = resolveMwBase(normMw(mu.mw_base), workbookBases);
+
+    const mwBase = resolveMatrixMw(mu, workbookBases, kitLabels);
+    if (!mwBase) {
+      gaps.no_mw_resolve.push({ unit_number: mu.unit_number, kitchen_type: mu.kitchen_type, unit_type: mu.unit_type_name });
+      continue;
+    }
+
     const topOpp = parseTopOpp(mu.thus_opp);
     const bk = bomKey(mwBase, topOpp);
     if (!bomIndex.has(bk)) {
-      gaps.no_bom_match.push({ unit_number: mu.unit_number, bom_key: bk, kitchen_cab: mu.kitchen_cab });
+      gaps.no_bom_match.push({ unit_number: mu.unit_number, bom_key: bk, kitchen_cab: mu.kitchen_cab || mu.kitchen_type });
       continue;
     }
-    const rl = roomLabel(topOpp, mu.kitchen_cab);
+    const kitchenCab = mu.kitchen_cab || mu.kitchen_type || mwBase;
+    const rl = roomLabel(topOpp, kitchenCab);
     const vk = `${ru.unit_type_id}|${rl}`;
     if (!variants.has(vk)) {
       variants.set(vk, {
         unit_type_id: ru.unit_type_id,
-        unit_type_name: typeNameById.get(ru.unit_type_id),
+        unit_type_name: typeById.get(ru.unit_type_id),
         top_opp: topOpp,
-        kitchen_cab: mu.kitchen_cab,
+        kitchen_cab: kitchenCab,
         mw_base: mwBase,
         bom_key: bk,
         room_label: rl,
@@ -230,7 +291,9 @@ async function main() {
   mkdirSync(resolve(ROOT, '.firecrawl'), { recursive: true });
   writeFileSync(resolve(ROOT, `.firecrawl/${PROJECT_ID}-sku-bridge-report.json`), JSON.stringify(report, null, 2));
 
-  console.log(`  Variants: ${variants.size}, SKU rows: ${inserts.length}, gaps no_bom: ${gaps.no_bom_match.length}, missing unit: ${gaps.matrix_unit_missing_registry.length}`);
+  console.log(
+    `  Variants: ${variants.size}, SKU rows: ${inserts.length}, gaps no_bom: ${gaps.no_bom_match.length}, missing unit: ${gaps.matrix_unit_missing_registry.length}, no_mw: ${gaps.no_mw_resolve.length}`,
+  );
 
   if (DRY) return;
 

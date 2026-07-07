@@ -123,6 +123,17 @@ def extract_file_hub_cabinet_list(path: Path, project_name: str) -> list[dict]:
     return rows
 
 
+def extract_kit_label(path: Path) -> str | None:
+    wb = xlrd.open_workbook(str(path))
+    sh = wb.sheet_by_index(0)
+    for r in range(min(25, sh.nrows)):
+        for c in range(sh.ncols):
+            v = str(sh.cell_value(r, c))
+            if ".kit" in v.lower():
+                return v.split("\\")[-1].replace(".kit", "").strip()
+    return None
+
+
 def extract_file(path: Path, project_name: str) -> list[dict]:
     troub = extract_file_troubadour(path, project_name)
     if troub:
@@ -144,9 +155,14 @@ def main() -> None:
 
     files = sorted(base.glob("MW*.xls")) + sorted(base.glob("MW*.XLS"))
     all_rows: list[dict] = []
+    kit_labels: dict[str, str] = {}
     gaps: list[str] = []
     for path in files:
         try:
+            mw = norm_mw(path.stem.split()[0])
+            kit = extract_kit_label(path)
+            if kit:
+                kit_labels[mw] = kit
             all_rows.extend(extract_file(path, args.project_name))
         except Exception as e:
             gaps.append(f"{path.name}: {e}")
@@ -159,6 +175,7 @@ def main() -> None:
         "row_count": len(all_rows),
         "bom_key_count": len(keys),
         "distinct_skus": len({r["sku"] for r in all_rows}),
+        "kit_labels": kit_labels,
         "rows": all_rows,
         "gaps": gaps,
     }
