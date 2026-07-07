@@ -13,7 +13,7 @@
 ## Items
 | ID | Status | Category | Description | Added | Updated |
 |----|--------|----------|-------------|-------|---------|
-| DS-01 | DONE | reporting | Data sourcing checklist: generator + weekly cron + UI at `/property-registry/reports/data-sourcing` with manual refresh; audit history in `registry_data_sourcing_runs`. | Jul 6 | Jul 6 |
+| CSMX-01 | DONE | pipeline | Full BSI detail batch for 8 CSMX Box jobs (`batch-ingest-csmx-full.mjs`): contract + matrix structure + floors + shop drawings + website. Scripts: `ingest-bsi-csmx-full.mjs`, `ingest-bsi-floors.mjs`, `ingest-bsi-shop-drawings.mjs`, `lib/bsi-csmx-auto-config.mjs`. Report: `.firecrawl/csmx-full-detail-batch-report.json`. Gaps: SKUs still require Counts Workbook (per-property); `25332` amenity matrix has no types; `25331` matrix has duplicate unit# rows (50 unique units). | Jul 7 | Jul 7 |
 | MH-02 | DONE | data-gap | Morgan Hill: `beds_per_unit` aligned to `bedrooms_structural` when no specialty fields (26 B-types fixed). Total beds = 479. Beds column UI only for divider/shared/pod/murphy/super-murphy. | Jun 19 | Jun 19 |
 | MH-03 | DONE | assets | Unit-type finish layouts from `UNIT PLANS_5.2025.pdf` — 86/86 types mapped + Cloudinary; sheet thumbnail per page (multi-unit sheets). | Jun 19 | Jun 20 |
 | MH-14 | DONE | data-gap | Morgan Hill full populate (`ingest-morganhill-complete.mjs`): 390 unit metadata, 86/86 sqft, 34 shop drawings, kitchen_variants, property net sqft 342,682 sf. | Jul 4 | Jul 4 |

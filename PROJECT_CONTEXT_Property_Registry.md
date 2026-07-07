@@ -1,6 +1,35 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** Jul 6, 2026
+**Last updated:** Jul 7, 2026
+
+## Session: Jul 7, 2026 — CSMX full BSI detail batch
+
+**User request:** Run full BSI detail for all CSMX projects.
+
+**New scripts:**
+- `scripts/batch-ingest-csmx-full.mjs` — all CSMX `25xxx` jobs with `property_id`
+- `scripts/ingest-bsi-csmx-full.mjs` — per-job orchestrator (contract → structure → floors → shop drawings → website)
+- `scripts/ingest-bsi-floors.mjs`, `scripts/ingest-bsi-shop-drawings.mjs` — generic Box API steps
+- `scripts/lib/bsi-csmx-auto-config.mjs` — auto config from Registry-iQ for website enrich
+
+**Run:** `node scripts/batch-ingest-csmx-full.mjs --apply` — 8/8 jobs OK (25322–25337).
+
+**Post-run counts (Registry-iQ, verified with count exact):**
+
+| Job | Types | Units | Shop drawings | Milestones |
+|-----|-------|-------|---------------|------------|
+| 25322 Five Corners | 51 | 368 | 26 | 1 |
+| 25323 Hub Broom | 20 | 474 | 3 | 1 |
+| 25325 Hub Chauncey | 99 | 681 | 0 | 2 |
+| 25326 Hub II | 35 | 236 | 0 | 1 |
+| 25328 Hub Knoxville | 40 | 126 | 24 | 1 |
+| 25331 Hub Clemson II | 50 | 50 | 32 | 1 |
+| 25332 Clear Creek Amenity | 0 | 0 | 0 | 1 |
+| 25337 Hub Tampa II | 14 | 108 | 1 | 1 |
+
+**Not in generic full pass:** scoped SKUs (Counts Workbook / phase 2–3), matrix `room_drawings`, architectural floor-plan Cloudinary upload — still property-specific (Troubadour/Morgan Hill) or BSI-02.
+
+---
 
 ## Session: Jul 6, 2026 — Data sourcing checklist (2025–2027)
 
