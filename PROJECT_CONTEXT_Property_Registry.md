@@ -12,7 +12,7 @@
 
 **Changes:**
 - Multi-sheet matrix extract + structure re-apply for `25326` (+226 units) and `25328` (+86 units).
-- `scripts/lib/bsi-unit-match.mjs` — tier spacing normalization, `-LL` suffix strip, building-prefix aliases.
+- `scripts/lib/bsi-unit-match.mjs` — tier spacing normalization, Hub Broom lower-level alias (`109 -LL` ↔ `LL1-109`), building-prefix aliases.
 - BOM key extract: tier-as-unit mode, unit-type-as-key mode (Clemson), bare `MW` column, skip review sheets.
 
 **SKU apply (live `bsi_counts_workbook`):**
