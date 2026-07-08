@@ -59,7 +59,70 @@ Rows are **not** 1:1 with Production lines: `property_unit_type_skus` has `UNIQU
 
 **SKUs:** Only deals with **non-zero `requirements`** rows linked to `unit_types` get `property_unit_type_skus` — roughly **13%** of Production deals today; the rest still get unit mix + units + floors.
 
-## Rosetta & DALE
+## PH phantom supersession (CSL workbook → Production actuals)
+
+**Doctrine:** `ph_` = modeled demand before source-of-record replacement (Shadow Pipeline). CSL Sales workbooks ingest as **`source = ph_csl_workbook`** on `property_unit_type_skus`. When **`sync-production-to-registry.mjs`** loads TLCiQ-Production requirements, phantom lines are **superseded** by actuals.
+
+**Library:** `scripts/lib/ph-sku-supersession.mjs`  
+**Wired in:** `sync-production-to-registry.mjs` § step 6 (runs automatically on every sync).
+
+### Unique key
+
+`UNIQUE (unit_type_id, sku, room_label)` — only one row per SKU assignment per unit type. Actuals and phantoms cannot coexist on the same key; Production upsert wins.
+
+### Supersession rules (in order)
+
+| # | Phantom row | Production actual | Action |
+|---|-------------|-------------------|--------|
+| 1 | Same `sku`, same `unit_type_id`, same `room_label`, `source ∈ {ph_csl_workbook, csl_sales_workbook}` | Requirement with that SKU | Delete phantom **then** upsert actual (`source = tlciq_production`). If phantom was already on same key, upsert alone would flip source; delete also clears duplicate `PH_*` aliases. |
+| 2 | `sku` = `PH_<workbook_line_key>`, `metadata.canonical_sku` = actual SKU | Same unit type + room | Delete `PH_*` row; upsert actual. |
+| 3 | `sku` = `PH_*`, `metadata.phantom_key` = actual SKU | Same unit type + room | Delete `PH_*` row; upsert actual. |
+| 4 | Phantom with **no** matching Production line | — | **Keep** (logged as “phantom line(s) remain”). |
+
+### Deal scope (shared properties)
+
+Phantoms are only superseded when `metadata` includes a deal scope **and** it matches the Production `deal.deal_number`, via any of:
+
+- `metadata.deal_number`
+- `metadata.tlciq_deal_number`
+- `metadata.prod_deal_number`
+- `metadata.registry_project_id`
+
+If phantom rows have **no** deal metadata, they match any sync on that property (legacy behavior — **workbook ingest should always stamp `metadata.deal_number`**).
+
+### Audit trail on actual rows
+
+When an actual replaces a phantom on the same key, `metadata.ph_supersession` is set:
+
+```json
+{
+  "at": "2026-07-08T…",
+  "deal_number": "27-006",
+  "production_requirement_id": "<requirements.id>",
+  "prior_phantom": {
+    "source": "ph_csl_workbook",
+    "workbook_line_key": "…",
+    "ingested_at": "…"
+  }
+}
+```
+
+### Future workbook ingest contract (`ingest-csl-workbook-ph.mjs`)
+
+| Field | Phantom ingest value |
+|-------|----------------------|
+| `source` | `ph_csl_workbook` |
+| `sku` | Real catalog SKU when known; else `PH_<stable_line_key>` |
+| `metadata.phantom` | `true` |
+| `metadata.deal_number` | Production deal or registry project id (e.g. `27-006`, `26-001-I`) |
+| `metadata.workbook_line_key` | Sheet + row (stable) |
+| `metadata.canonical_sku` | Required when `sku` is `PH_*` |
+| `production_line_key` | Workbook line id (not Production uuid) |
+
+**Do not** use `PH_` prefix when the workbook already has a real SKU — use real SKU + `source=ph_csl_workbook` so Production can overwrite in one upsert.
+
+**Skip PH ingest** when Production already has requirements for that deal (e.g. `25-007`, `26-001`) — sync Production only.
+
 
 - Register Production **source_system** and identifiers (site id, deal, normalized address hash).
 - Use **rosetta_resolve** / batch jobs to link Production → `property_registry.id`.

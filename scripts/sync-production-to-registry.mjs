@@ -28,6 +28,11 @@ import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  buildActualSkuMetadata,
+  fetchPhantomSkusForProperty,
+  supersedePhantomsForActual,
+} from './lib/ph-sku-supersession.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -381,16 +386,65 @@ async function syncDeal(deal, registryPropertyId) {
   }
   console.log(`  Units: ${createdU} created, ${updatedU} updated, ${skippedU} skipped`);
 
-  // ─── 6. Upsert property_unit_type_skus ──────────────────────────────
-  let createdSku = 0, skippedSku = 0;
+  // ─── 6. Upsert property_unit_type_skus (+ PH phantom supersession) ───
+  let createdSku = 0, skippedSku = 0, supersededPh = 0;
   if (prodReqs.length) {
+    const regUtIds = [...new Set([...utIdMap.values()].filter(Boolean))];
+    let phantomPool = regUtIds.length
+      ? await fetchPhantomSkusForProperty(reg, registryPropertyId, regUtIds)
+      : [];
+    if (phantomPool.length) {
+      console.log(`  Phantom SKUs on property (pre-sync): ${phantomPool.length}`);
+    }
+
+    const existingSkuMap = new Map();
+    if (regUtIds.length) {
+      const { data: existingSkus, error: exErr } = await reg
+        .from('property_unit_type_skus')
+        .select('id, unit_type_id, sku, room_label, source, metadata, production_line_key')
+        .eq('property_id', registryPropertyId)
+        .in('unit_type_id', regUtIds);
+      if (exErr) console.error('  SKU prefetch error:', exErr.message);
+      for (const row of existingSkus || []) {
+        existingSkuMap.set(`${row.unit_type_id}|${row.sku}|${row.room_label ?? ''}`, row);
+      }
+    }
+
     for (const req of prodReqs) {
       const regUtId = utIdMap.get(req.unit_type_id);
       if (!regUtId) { skippedSku++; continue; }
       const item = itemMap.get(req.item_id);
       if (!item?.sku) { skippedSku++; continue; }
 
+      const roomLabel = '';
+      const skuKey = `${regUtId}|${item.sku}|${roomLabel}`;
+      const existing = existingSkuMap.get(skuKey);
+
+      const supersessionCtx = {
+        unitTypeId: regUtId,
+        actualSku: item.sku,
+        roomLabel,
+        dealNumber: deal.deal_number,
+      };
+      const { deleted, ids: removedPhantomIds } = await supersedePhantomsForActual(
+        reg,
+        phantomPool,
+        supersessionCtx,
+        { dry: DRY },
+      );
+      supersededPh += deleted;
+      if (removedPhantomIds.length) {
+        const removed = new Set(removedPhantomIds);
+        phantomPool = phantomPool.filter((p) => !removed.has(p.id));
+      }
+
       if (DRY) { createdSku++; continue; }
+
+      const metadata = buildActualSkuMetadata({
+        existingRow: existing,
+        dealNumber: deal.deal_number,
+        productionLineKey: req.id,
+      });
 
       const { error } = await reg.from('property_unit_type_skus').upsert({
         property_id: registryPropertyId,
@@ -398,14 +452,30 @@ async function syncDeal(deal, registryPropertyId) {
         sku: item.sku,
         description: item.name || null,
         qty_per_unit: req.quantity || 1,
-        room_label: '',
+        room_label: roomLabel,
         source: 'tlciq_production',
         production_line_key: req.id,
+        metadata,
       }, { onConflict: 'unit_type_id,sku,room_label' });
       if (error) console.error(`  SKU upsert error (${item.sku}):`, error.message);
-      else createdSku++;
+      else {
+        createdSku++;
+        existingSkuMap.set(skuKey, {
+          unit_type_id: regUtId,
+          sku: item.sku,
+          room_label: roomLabel,
+          source: 'tlciq_production',
+          production_line_key: req.id,
+          metadata,
+        });
+      }
     }
-    console.log(`  SKUs: ${createdSku} upserted, ${skippedSku} skipped`);
+    const phRemain = phantomPool.length;
+    console.log(
+      `  SKUs: ${createdSku} upserted, ${skippedSku} skipped` +
+        (supersededPh ? `, ${supersededPh} phantom line(s) superseded` : '') +
+        (phRemain ? `, ${phRemain} phantom line(s) remain (no matching actual yet)` : ''),
+    );
   } else {
     console.log('  SKUs: 0 requirements in Production for this deal (BOM not loaded)');
   }

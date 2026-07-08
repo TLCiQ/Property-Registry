@@ -2154,3 +2154,43 @@ New bed-count roll-up columns on parent tables: `property_floors.total_beds_on_f
 - Deactivated bogus property `Findorff Construction : 25315…` (mis-ingested archaeology row)
 
 **Documentation:** `docs/BSI_CSMX_PROPERTY_ENRICH.md` rewritten — all 14 source systems, phased pipeline, Box API vs Drive rules, audit/repair, orchestrator config.
+
+---
+
+## Session log — Jul 7, 2026 (CSL fixed/loose FF&E Production sync)
+
+**Goal:** Same enrichment pattern as CSMX batch work, but for CSL fixed/loose furniture — authority is **TLCiQ-Production** `requirements` → `property_unit_type_skus` (`source=tlciq_production`), not Box Counts Workbook.
+
+**New script:** `scripts/batch-ingest-csl-furniture.mjs` — explicit Production deal → registry project_id alias map + `external_ids` stamp.
+
+**Alias map (prod deal → registry project):**
+| Prod deal | Registry project | Property |
+|-----------|------------------|----------|
+| `26-001` | `26-001-I` | Hub on Campus Raleigh |
+| `26-003` | `26-025-I` | Hub Madison |
+| `26-008` | `26-008` | Hub Ann Arbor (loose) |
+| `26-009` | `26-009-I` | Hub Ann Arbor (fixed) |
+
+**Apply results (Jul 7):**
+- **26-001-I Raleigh fixed:** 676 units, 1,508 prod SKU rows (2,222 requirement lines), 243 unit types, 2,121 beds
+- **26-025-I Madison fixed:** 238 units, 889 SKUs, 72 unit types, 894 beds
+- **26-009-I Ann Arbor fixed:** +97 SKUs merged onto shared property with 26-008 loose (627 total prod SKUs, 230 units)
+- **26-008** already enriched (530 loose SKUs); external_ids stamped retroactively
+
+**Note:** Ann Arbor shares one property between loose (`26-008`) and fixed (`26-009-I`) deals. Sync script overwrote `property_registry.total_units` with fixed-deal count (116); corrected to 230 from actual `property_units` rows.
+
+**Not in Production (no deal to sync):** Hub East Lansing `26-1093-D`, Hub Bloomington `26-1468-D`/`26-179-I`, Lincoln `27-006-I`/`27-007-I` (units from BSI matrix only, 0 SKUs). `26-004-I` Tallahassee loose maps to prod `26-004` mirror shelves — skipped (not FF&E furniture).
+
+---
+
+## Session log — Jul 8, 2026 (PH phantom SKU supersession for CSL workbooks)
+
+**Goal:** Sketch + wire supersession rules before `ingest-csl-workbook-ph.mjs` — Sales workbook lines as `ph_csl_workbook`, replaced when Production requirements sync.
+
+**Deliverables:**
+- `scripts/lib/ph-sku-supersession.mjs` — match rules, deal scope, audit metadata
+- `scripts/lib/ph-sku-supersession.test.mjs` — smoke test (no DB)
+- `sync-production-to-registry.mjs` step 6 — prefetch phantoms, delete superseded, upsert with `metadata.ph_supersession`
+- `docs/PRODUCTION_REGISTRY_UNIT_PIPELINE.md` § PH phantom supersession — ingest contract for next script
+
+**Rules summary:** Same `(unit_type, sku, room)` → Production wins; `PH_*` rows with `metadata.canonical_sku` deleted when actual lands; deal-scoped via `metadata.deal_number`; unscoped phantoms still match (legacy — ingest must stamp deal).
