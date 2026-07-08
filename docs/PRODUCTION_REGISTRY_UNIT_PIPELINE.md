@@ -107,7 +107,18 @@ When an actual replaces a phantom on the same key, `metadata.ph_supersession` is
 }
 ```
 
-### Future workbook ingest contract (`ingest-csl-workbook-ph.mjs`)
+### Workbook ingest (`ingest-csl-workbook-ph.mjs`)
+
+**Script:** `scripts/ingest-csl-workbook-ph.mjs` + `scripts/extract-csl-workbook-ph.py`
+
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Default — parse + row counts, no writes |
+| `--apply` | Upsert `ph_csl_workbook` rows |
+| `--only=27-006-I,27-007-I` | Subset of jobs in `lib/csl-workbook-ph-config.mjs` |
+| `--local=path` | Skip Box; parse local xlsx/pdf |
+
+**Box resolution:** Sales …/Project Workbooks/CSL (Quote Rev xlsx) → interim Production Sage invoice PDF if no Sales xlsx (Lincoln II, Jul 2026).
 
 | Field | Phantom ingest value |
 |-------|----------------------|

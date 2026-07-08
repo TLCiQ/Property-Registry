@@ -2194,3 +2194,20 @@ New bed-count roll-up columns on parent tables: `property_floors.total_beds_on_f
 - `docs/PRODUCTION_REGISTRY_UNIT_PIPELINE.md` § PH phantom supersession — ingest contract for next script
 
 **Rules summary:** Same `(unit_type, sku, room)` → Production wins; `PH_*` rows with `metadata.canonical_sku` deleted when actual lands; deal-scoped via `metadata.deal_number`; unscoped phantoms still match (legacy — ingest must stamp deal).
+
+---
+
+## Session log — Jul 8, 2026 (CSL workbook PH ingest — Lincoln II)
+
+**Goal:** `ingest-csl-workbook-ph.mjs` against Sales …/Project Workbooks/CSL xlsx; first targets `27-006-I` / `27-007-I`.
+
+**Finding:** No Quote Rev xlsx in Sales 2027 folder for Lincoln II yet (only contract PDF). Leo `Copy of 27-006-I.xlsm` TABLE sheet is enterprise inventory (~10k SKUs) — not used. Interim source: Tricia Production Sage invoice PDFs.
+
+**Deliverables:**
+- `scripts/ingest-csl-workbook-ph.mjs` — Box resolve → extract → upsert `ph_csl_workbook`
+- `scripts/extract-csl-workbook-ph.py` — Quote Rev / Asia PO Form / Sage invoice PDF parsers
+- `scripts/lib/csl-workbook-ph-config.mjs` — Lincoln II job defs + Box IDs
+
+**Applied (Jul 8):** Hub Bloomington Lincoln property — **272** FIXED rows (4 SKUs × 68 unit types, `room_label=FIXED`) + **1020** LOOSE rows (15 SKUs). Metadata stamps `deal_number`, `registry_project_id`, `workbook_source`. Re-run after Sales CSL xlsx upload; script prefers Sales path when filename contains deal id.
+
+**Reference parser validated:** `26-006-I Hub Boulder.xlsx` → 23 Quote Rev lines (not ingested — no job config row yet).
