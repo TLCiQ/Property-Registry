@@ -1,6 +1,23 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** Jul 7, 2026
+**Last updated:** Jul 14, 2026
+
+## Session: Jul 14, 2026 — Troubadour 3D orbit “going crazy”
+
+**User report:** Newly enriched Troubadour property 3D map orbit was unstable / wild.
+
+**Live data (Registry-iQ `095960e3-5b22-4a0c-9528-e3843fed3ede`):** coords `33.5824426, -101.8695213` (valid Lubbock), `total_residential_floors=7`, `total_units=276`, 1 building / 7 floors — **data is fine**.
+
+**Root cause (UI):** `dale-chat/lib/orbit-camera.ts` took `max(floorHeight, unitHeuristic)`. Mid-rise high-unit assets (Troubadour 7 floors ≈24m) inherited the student-housing unit heuristic pin (~78m) + tall camera bonus, so Marker3D extrusion + auto-rotate fought the camera.
+
+**Fix (dale-chat, no DB write):**
+- Prefer floor-derived pin when floors are known; unit heuristic only as fallback.
+- Cap floors / pin altitude / camera range; mid-rise footprint pull-back via units without raising pin.
+- Guard invalid lat/lng in `Building3DMap`; pass `max(highest, total)_residential_floors` into orbit context.
+
+**Redeploy:** dale-chat / `tlciq-platform` needs deploy (or local hard-refresh after pull). Troubadour records unchanged.
+
+---
 
 ## Session: Jul 7, 2026 — CSMX SKU bridge gap fixes
 
