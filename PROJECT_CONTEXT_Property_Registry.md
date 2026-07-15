@@ -2,6 +2,41 @@
 
 **Last updated:** Jul 15, 2026
 
+## Session: Jul 15, 2026 — Troubadour Send campaign: yes it was submitted (bug)
+
+**User follow-up:** Was submitting the campaign from property/project broken?
+
+**Answer:** **Partial — property Send works, but a campaign-code bug made Troubadour look unsent.** Project registry has **no** enrichment-campaign UI.
+
+**What happened (live):**
+- 2026-07-15 **13:04:24Z** — `POST /api/property-enrich-review/seed` **200** from Troubadour property page
+- Seed defaulted `campaign_code` to hardcoded `MH-REGISTRY-ENRICH-001` → reused Morgan Hill’s campaign row (did **not** set `property_id` to Troubadour)
+- Review + `sent` event written with Troubadour `property_id` but MH `campaign_id`; email delivered to `molivares@blakesolutions.com` + 3 CCs (`primary_send: sent`, `witness_sent: 3`, 11 items)
+- Troubadour status UI looks up campaigns by `property_id` → showed **no campaign** / still offered Send
+
+**Fix (dale-chat, needs deploy):**
+- `defaultEnrichCampaignCode(propertyId)` — MH keeps historic code; others get `REG-ENRICH-{12hex}`
+- `seedPropertyEnrichReview` reuses campaigns by **property_id only** (never global code alone); revoke pending scoped to same property
+- Status review query also filters by `property_id`
+
+**Data repair (Registry-iQ, applied live):**
+- Created Troubadour campaign `REG-ENRICH-095960E35B22` (`188006dd-…`); moved review `8d266552-…` + events onto it
+- Restored MH campaign title/recipients to Morgan Hill
+
+**Project registry:** no `PropertyEnrichCampaignSection` — enrichment send is **property-only**.
+
+---
+
+## Session: Jul 15, 2026 — Troubadour enrichment campaign check + sent-campaign UI
+
+**User question:** Did we trigger an enrichment campaign for Troubadour?
+
+**Prior live check (superseded by send at 13:04Z same day):** earlier query showed 0 Troubadour campaign rows; the Jul 15 send was mis-attributed to Morgan Hill because of the campaign-code hijack (see session above).
+
+**dale-chat UI fix (not yet deployed):** `PropertyEnrichCampaignSection` + header button — when a campaign **has** been sent, show cyan status banner (“Campaign sent on … to …”), delivery/response tracking panel, de-emphasize primary Send CTA; header becomes **View campaign status** (scroll) with **Resend with changes** as secondary only in monitor panel.
+
+---
+
 ## Session: Jul 15, 2026 — Troubadour 3D orbit still broken (post pin-altitude fix)
 
 **Evidence:** Screen recording `.firecrawl/troubadour-3d-card.mov` (+ `troubadour-3d-frame-*.jpg`). Production Troubadour Overview (`095960e3-…`): 3D ORBIT card spins through extreme close-ups of mesh (roof, foliage, sidewalk, washed textures / jagged polys). SITE MAP 2D pin is fine. Lubbock elev ~981 m AGL is irrelevant — `LatLngAltitude` is meters above ground.
