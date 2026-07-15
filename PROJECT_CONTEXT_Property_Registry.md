@@ -1,6 +1,42 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** Jul 14, 2026
+**Last updated:** Jul 15, 2026
+
+## Session: Jul 15, 2026 — Troubadour 3D orbit still broken (post pin-altitude fix)
+
+**Evidence:** Screen recording `.firecrawl/troubadour-3d-card.mov` (+ `troubadour-3d-frame-*.jpg`). Production Troubadour Overview (`095960e3-…`): 3D ORBIT card spins through extreme close-ups of mesh (roof, foliage, sidewalk, washed textures / jagged polys). SITE MAP 2D pin is fine. Lubbock elev ~981 m AGL is irrelevant — `LatLngAltitude` is meters above ground.
+
+**Prior fix (deployed `d98cb5c`):** Prefer floor-derived pin vs unit heuristic — correct but insufficient. Remaining bug was camera **range collapsing into the photorealistic mesh** while auto-rotate mutated `heading` every rAF (optionally fighting extruded marker).
+
+**Fix (dale-chat, not yet deployed):**
+- `Building3DMap.tsx` — construct Map3D with full pose; start orbit only after `gmp-steadychange`; use `flyCameraAround` + `altitudeMode: RELATIVE_TO_GROUND` (CameraOptions default is ABSOLUTE); re-assert range if collapsed; `extruded: false` on pin; stop via `stopCameraAnimation`.
+- `orbit-camera.ts` — min range 900 m; orbit center `max(20, pin*0.55)`.
+- `google-maps-3d.ts` — typed fly/stop camera helpers.
+
+**Redeploy:** dale-chat / `tlciq-platform` required. No Registry-iQ data change.
+
+---
+
+## Session: Jul 15, 2026 — FF&E SKU colorways on property and project details
+
+**dale-chat UI/API:** `GET /api/property-registry/[id]/skus` now enriches Registry-iQ
+`property_unit_type_skus.sku` by exact SKU against DALE-Demand `sku_master.item_sku`, deriving
+the displayed colorway from distinct non-empty `color` / `color2` values. `PropertySkusTab`
+shows Colorway in assignment tables and SKU summaries.
+
+**Project registry:** `/project-registry/[id]` now has Overview and FF&E SKUs tabs. The SKU tab
+reuses the linked property's Registry-iQ BOM and explicitly labels that boundary because SKU lines
+do not currently carry a canonical project UUID. Projects without a property link show a clear
+empty state.
+
+**Validation:** `tsc --noEmit` and `next build` passed. A live route spot-check returned 199
+assignment lines / 40 unique SKUs, with 120 lines enriched with colorway values. Standalone ESLint
+was unavailable in this checkout (no local ESLint dependency; `npx` install was blocked by npm
+cache permissions).
+
+**Deploy:** dale-chat / `tlciq-platform` requires deployment.
+
+---
 
 ## Session: Jul 14, 2026 — Troubadour 3D orbit “going crazy”
 

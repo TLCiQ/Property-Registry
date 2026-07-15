@@ -1,6 +1,6 @@
 # TLC iQ Platform — Property Registry Master Backlog
 
-**Last reviewed:** Jul 14, 2026
+**Last reviewed:** Jul 15, 2026
 
 ## Priority Legend
 - **NOW** — User wants this done in the current or next session
@@ -13,7 +13,8 @@
 ## Items
 | ID | Status | Category | Description | Added | Updated |
 |----|--------|----------|-------------|-------|---------|
-| MAP-01 | DONE | ui | Troubadour 3D orbit “going crazy”: unit-heuristic pin (~78m) overrode known 7 floors; fixed in dale-chat `lib/orbit-camera.ts` (prefer floors + clamps + footprint pull-back). No Registry-iQ data change. | Jul 14 | Jul 14 |
+| MAP-01 | DONE | ui | Troubadour 3D orbit pin inflation: unit-heuristic pin (~78m) overrode known 7 floors; fixed in dale-chat `lib/orbit-camera.ts` (prefer floors + clamps + footprint pull-back). Deployed `d98cb5c`. | Jul 14 | Jul 15 |
+| MAP-02 | NOW | ui | Troubadour 3D orbit still mesh-clipped after MAP-01: per-frame `heading` auto-rotate collapsed camera range into photoreal tiles. Fix in dale-chat `Building3DMap.tsx` (`flyCameraAround` + RELATIVE_TO_GROUND, steady-gated orbit, no extrusion). **Needs dale-chat / tlciq-platform redeploy.** | Jul 15 | Jul 15 |
 | CSMX-01 | DONE | pipeline | Full BSI detail batch for 8 CSMX Box jobs (`batch-ingest-csmx-full.mjs`): contract + matrix structure + floors + shop drawings + website. Scripts: `ingest-bsi-csmx-full.mjs`, `ingest-bsi-floors.mjs`, `ingest-bsi-shop-drawings.mjs`, `lib/bsi-csmx-auto-config.mjs`. Report: `.firecrawl/csmx-full-detail-batch-report.json`. Gaps: SKUs still require Counts Workbook (per-property); `25332` amenity matrix has no types; `25331` matrix has duplicate unit# rows (50 unique units). | Jul 7 | Jul 7 |
 | CSMX-02 | DONE | pipeline | CSMX SKU bridge gaps closed (Jul 7): multi-sheet matrix structure (`extract-bsi-matrix.py`), tier/unit-type matrix modes (`extract-bsi-bom-keys.py`), unit lookup normalization (`lib/bsi-unit-match.mjs`). Apply results: `25326` 461/461 units → 2,095 SKU rows; `25328` 212/214 → 1,314; `25331` 50 types → 922; `25337` 108 tiers → 402. | Jul 7 | Jul 7 |
 | CSMX-03 | BLOCKED | pipeline | `25325` Hub Chauncey SKU bridge: matrix uses `KITCHEN TYPE` codes (not MW); 86 MW xls + 13 xlsm workbooks in Box. Need unit-type→MW crosswalk (xlsm THUS/OPP tabs or kit-label index from 20-20 exports). 672 matrix units, 0 SKUs applied. | Jul 7 | Jul 7 |
