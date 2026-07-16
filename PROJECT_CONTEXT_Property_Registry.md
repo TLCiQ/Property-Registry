@@ -1,6 +1,27 @@
 # PROJECT_CONTEXT — Property Registry
 
-**Last updated:** Jul 15, 2026
+**Last updated:** Jul 16, 2026
+
+## Session: Jul 16, 2026 — Troubadour FF&E colorway empty (root cause + fix)
+
+**User question:** Why is Colorway blank for Troubadour (`095960e3-5b22-4a0c-9528-e3843fed3ede`)?
+
+**Live data verified:**
+- Registry-iQ: **790** `property_unit_type_skus` lines, **134** unique SKUs (sources: `troubadour_counts_workbook`, `troubadour_counts_workbook_vanity`)
+- SKU shape is BSI millwork **short codes** (`B12L`, `SB36`, `FHVSB30`, `VDB12-3`) — not full `sku_master.item_sku` values (`DB12L-STU-WAL`, `SB36-SL-AV`)
+- DALE-Demand exact join: **0 / 134** matches before fix
+- Many BSI rows in `sku_master` have **null `color`/`color2`**; finish lives in description suffix (`SLAB / ASH VELVET`) or item_sku tokens (`SL-AV`)
+- Troubadour `property_units.color_code` is **unset** (0/276) — cannot disambiguate Scheme 1 vs 2 per unit yet
+
+**Root cause:** `GET /api/property-registry/[id]/skus` only joined on exact `item_sku`. Troubadour BOM ingest stores counts-workbook codes; UF furniture properties (e.g. Morgan Hill) use full item SKUs and worked.
+
+**Fix (dale-chat, local — needs deploy):** `lib/property-sku-colorway.ts` + route update. Fallback chain: exact → `base_sku` → prefix (`{code}-%`) with BSI normalizations (strip `FH`, `REM`, `-3` version suffix, `32` depth, `D` cabinet prefix, wall-cab `L/R`). Colorway from `color`/`color2`, else description tail, else SKU suffix. Ambiguous variants joined with ` · `.
+
+**Post-fix spot-check:** Troubadour **42 / 134** SKUs now show colorway (was 0). Morgan Hill parity unchanged (**18 / 40**). Remaining gaps: countertop `PBP*`, fillers `VF*`, `BF*`, some `DB*-3` — not in `sku_master`; needs project-specific finish ingest or per-unit `color_code` backfill from Matrix.
+
+**Deploy:** dale-chat / `tlciq-platform` required. No Registry-iQ schema/data change.
+
+---
 
 ## Session: Jul 15, 2026 — Troubadour Send campaign: yes it was submitted (bug)
 
