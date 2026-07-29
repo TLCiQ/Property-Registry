@@ -4,6 +4,13 @@
  *
  * Usage:
  *   node scripts/ingest-bsi-matrix-structure.mjs --project-id=25001 --apply
+ *
+ * property_units.construction_area is LEGACY (2026-07-29): the single home for
+ * unit-grain truck/phase/area facts is `public.project_unit_assignments`. This
+ * script still stamps construction_area for properties PUA has not ingested yet,
+ * but skips it for any unit PUA already covers — otherwise it would recreate the
+ * dual home and be rejected by trigger property_units_block_dual_home. See
+ * scripts/lib/pua-coverage.mjs and scripts/migration-resolve-unit-grain-dual-home.sql.
  */
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
@@ -13,6 +20,11 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getBoxAccessToken, downloadBoxFile } from './lib/box-api-download.mjs';
 import { loadLocalBoxFolders, findProjectFolder, findMatrixXlsx } from './lib/box-project-browser.mjs';
+import {
+  getPuaCoveredUnits,
+  stripCoveredUnitGrainFields,
+  assertNoAmbiguousCoverage,
+} from './lib/pua-coverage.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -120,16 +132,29 @@ async function main() {
   let unitsCreated = 0;
   let unitsUpdated = 0;
 
+  // project_unit_assignments owns unit-grain truck/phase/area. Ask once which units
+  // it already covers so we do not restamp a stale second copy onto property_units.
+  const { covered: puaCovered, ambiguous: puaAmbiguous } = await getPuaCoveredUnits(reg, propertyId);
+  assertNoAmbiguousCoverage(puaAmbiguous, propertyId);
+  let areaSkipped = 0;
+  if (puaCovered.size) {
+    console.log(`  project_unit_assignments already covers ${puaCovered.size} unit(s) — construction_area will be left to it`);
+  }
+
   for (const u of matrix.units) {
     const ut = u.unit_type ? typeByName.get(u.unit_type) : null;
     if (!ut?.id && !DRY) continue;
-    const patch = {
-      property_id: propertyId,
-      unit_number: String(u.unit_number),
-      unit_type_id: ut?.id ?? null,
-      construction_area: u.construction_area,
-      metadata: { source: 'bsi_matrix', level: u.level, unit_type: u.unit_type },
-    };
+    const patch = stripCoveredUnitGrainFields(
+      {
+        property_id: propertyId,
+        unit_number: String(u.unit_number),
+        unit_type_id: ut?.id ?? null,
+        construction_area: u.construction_area,
+        metadata: { source: 'bsi_matrix', level: u.level, unit_type: u.unit_type },
+      },
+      puaCovered,
+      { onStrip: () => { areaSkipped++; } },
+    );
     const existing = unitByNumber.get(String(u.unit_number));
     if (existing) {
       if (!DRY) await reg.from('property_units').update(patch).eq('id', existing.id);
@@ -141,6 +166,9 @@ async function main() {
       }
       unitsCreated++;
     }
+  }
+  if (areaSkipped) {
+    console.log(`  construction_area skipped for ${areaSkipped} unit(s) — project_unit_assignments is the source of truth`);
   }
 
   const projectPatch = {

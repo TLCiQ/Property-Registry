@@ -8,6 +8,13 @@
  * Usage:
  *   node scripts/ingest-troubadour-25198-complete.mjs --dry-run
  *   node scripts/ingest-troubadour-25198-complete.mjs --apply
+ *
+ * property_units.phase_no / construction_area are LEGACY (2026-07-29). Troubadour
+ * is one of the properties `project_unit_assignments` has NOT ingested yet, so this
+ * script is still their only home and keeps writing them. Once Troubadour's matrix
+ * lands in project_unit_assignments, the shared guard below stops these writes
+ * automatically rather than letting a second, unsynced copy drift.
+ * See scripts/lib/pua-coverage.mjs + scripts/migration-resolve-unit-grain-dual-home.sql.
  */
 import { createClient } from '@supabase/supabase-js';
 import { v2 as cloudinary } from 'cloudinary';
@@ -16,6 +23,11 @@ import { execSync } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  getPuaCoveredUnits,
+  stripCoveredUnitGrainFields,
+  assertNoAmbiguousCoverage,
+} from './lib/pua-coverage.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 for (const f of ['.env.local', '.env']) {
@@ -266,6 +278,15 @@ async function main() {
   let unitsCreated = 0;
   let unitsUpdated = 0;
 
+  // If project_unit_assignments has since ingested this property, it owns
+  // phase_no / construction_area and these legacy writes must stand down.
+  const { covered: puaCovered, ambiguous: puaAmbiguous } = await getPuaCoveredUnits(reg, PROPERTY_ID);
+  assertNoAmbiguousCoverage(puaAmbiguous, PROPERTY_ID);
+  let legacySkipped = 0;
+  if (puaCovered.size) {
+    console.log(`  project_unit_assignments now covers ${puaCovered.size} unit(s) — phase_no / construction_area will be left to it`);
+  }
+
   for (const u of matrix.units) {
     const ut = u.unit_type ? typeByName.get(u.unit_type) : null;
     const metadata = {
@@ -278,14 +299,18 @@ async function main() {
       drawings: u.drawings,
       phase_no: u.phase_no,
     };
-    const patch = {
-      property_id: PROPERTY_ID,
-      unit_number: String(u.unit_number),
-      unit_type_id: ut?.id ?? null,
-      construction_area: u.construction_area,
-      phase_no: u.phase_no ? Number(u.phase_no) : null,
-      metadata,
-    };
+    const patch = stripCoveredUnitGrainFields(
+      {
+        property_id: PROPERTY_ID,
+        unit_number: String(u.unit_number),
+        unit_type_id: ut?.id ?? null,
+        construction_area: u.construction_area,
+        phase_no: u.phase_no ? Number(u.phase_no) : null,
+        metadata,
+      },
+      puaCovered,
+      { onStrip: () => { legacySkipped++; } },
+    );
     const existing = unitByNumber.get(String(u.unit_number));
     if (existing) {
       if (!DRY) {
@@ -305,6 +330,9 @@ async function main() {
   }
   console.log(`  unit types: +${typesCreated} created, ${typesUpdated} updated`);
   console.log(`  units: +${unitsCreated} created, ${unitsUpdated} updated`);
+  if (legacySkipped) {
+    console.log(`  phase_no / construction_area skipped for ${legacySkipped} unit(s) — project_unit_assignments is the source of truth`);
+  }
 
   // ── 3. Project 25198 create/update ──────────────────────────────────
   const { data: parentProj } = await reg

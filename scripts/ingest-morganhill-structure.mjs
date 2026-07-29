@@ -7,8 +7,22 @@
  *     inconsistent: { unit_type_name: [counts] } }
  *
  * Writes:
- *   - property_units.construction_area / truck_no / phase_no / color_code
+ *   - property_units.color_code                               (per unit)
  *   - property_unit_types.bathrooms                           (per type, matched on unit_type_name)
+ *
+ * DOES NOT write truck_no / phase_no / construction_area any more (2026-07-29).
+ * Those are unit-grain final-mile facts and their single home is now
+ * `public.project_unit_assignments`, loaded from the Matrix NEW_SCHEME workbook by
+ * Chain-iQ `scripts/ingest_mh_matrix_master.py` with full Box provenance.
+ * This script used to stamp a second, unsynced copy onto property_units from an
+ * older matrix revision — exactly the dual home resolved by
+ * scripts/migration-resolve-unit-grain-dual-home.sql:
+ *   - property_units.truck_no was dropped (writing it now errors: no such column);
+ *   - property_units.phase_no / construction_area are rejected by trigger
+ *     property_units_block_dual_home for any unit project_unit_assignments covers.
+ * color_code stays here deliberately: it is property-grain, project_unit_assignments
+ * does not carry it, and dale-chat's property-registry floors-summary + units routes
+ * read it from property_units.
  *
  * Building/floor placement is handled separately by migration-reconcile-morganhill-buildings.sql.
  *
@@ -53,28 +67,23 @@ async function main() {
     return;
   }
 
-  // 1) per-unit sequencing
+  // 1) per-unit colorway. area/truck/phase are deliberately NOT written here —
+  //    project_unit_assignments owns them (see header).
   let u_ok = 0, u_miss = 0;
   for (const row of data.units) {
-    const [unit_number, area, truck, phase, color_code] = row;
+    const [unit_number, , , , color_code] = row;
     const { error, count } = await reg
       .from('property_units')
-      .update(
-        {
-          construction_area: area ?? null,
-          truck_no: truck ?? null,
-          phase_no: phase ?? null,
-          color_code: color_code ?? null,
-        },
-        { count: 'exact' },
-      )
+      .update({ color_code: color_code ?? null }, { count: 'exact' })
       .eq('property_id', PROPERTY_ID)
       .eq('unit_number', String(unit_number));
     if (error) { console.error('unit update failed', unit_number, error.message); }
     else if ((count ?? 0) === 0) { u_miss++; }
     else { u_ok += 1; }
   }
-  console.log(`  units updated: ${u_ok}, unmatched: ${u_miss}`);
+  console.log(`  units updated (color_code): ${u_ok}, unmatched: ${u_miss}`);
+  console.log('  note: construction_area / truck_no / phase_no intentionally skipped —');
+  console.log('        project_unit_assignments is the source of truth for those.');
 
   // 2) per-type bathrooms
   let t_ok = 0, t_miss = 0;
